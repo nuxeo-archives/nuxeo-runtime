@@ -6,12 +6,12 @@
   <parent>
     <groupId>org.nuxeo.runtime</groupId>
     <artifactId>nuxeo-runtime-parent</artifactId>
-    <version>1.5-SNAPSHOT</version>
+    <version>1.5-20080915</version>
   </parent>
 
   <groupId>org.nuxeo.runtime</groupId>
   <artifactId>nuxeo-runtime-test</artifactId>
-  <version>1.5-SNAPSHOT</version>
+  <version>1.5-20080915</version>
   <name>Nuxeo Runtime Tests</name>
 
   <description>Nuxeo Runtime: Nuxeo Runtime Tests.</description>
