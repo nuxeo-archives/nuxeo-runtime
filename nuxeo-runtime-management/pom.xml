@@ -11,6 +11,7 @@
   <groupId>org.nuxeo.runtime</groupId>
   <artifactId>nuxeo-runtime-management</artifactId>
   <name>Nuxeo Runtime Management</name>
+  <version>1.5.0.m2-NXP-2981</version>
 
   <dependencies>
     <dependency>
