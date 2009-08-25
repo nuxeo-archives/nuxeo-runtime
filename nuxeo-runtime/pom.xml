@@ -8,6 +8,7 @@
     <version>1.5-20081231</version>
   </parent>
 
+  <version>1.5-20081231-NXP-3779</version>
   <groupId>org.nuxeo.runtime</groupId>
   <artifactId>nuxeo-runtime</artifactId>
   <name>Nuxeo Runtime</name>
@@ -38,6 +39,10 @@
       <groupId>commons-jexl</groupId>
       <artifactId>commons-jexl</artifactId>
     </dependency>
+    <dependency>
+      <groupId>commons-io</groupId>
+      <artifactId>commons-io</artifactId> 
+    </dependency> 
   </dependencies>
 
   <build>

@@ -19,12 +19,14 @@
 
 package org.nuxeo.runtime.api;
 
+import java.io.File;
 import java.util.Properties;
 
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.login.LoginContext;
 import javax.security.auth.login.LoginException;
 
+import org.apache.commons.io.FileCleaningTracker;
 import org.nuxeo.common.collections.ListenerList;
 import org.nuxeo.runtime.RuntimeService;
 import org.nuxeo.runtime.RuntimeServiceEvent;
@@ -60,6 +62,8 @@ public final class Framework {
     private static ServiceManager serviceMgr;
 
     private static final ListenerList listeners = new ListenerList();
+
+    private static final FileCleaningTracker fileCleaningTracker = new FileCleaningTracker();
 
     // Utility class.
     private Framework() { }
@@ -362,6 +366,17 @@ public final class Framework {
             }
         }
         return result.toString();
+    }
+
+    /**
+     * This method delete the given file when the marker object is collected by
+     * GC.
+     *
+     * @param file The file to delete
+     * @param marker the marker Object
+     */
+    public static void trackFile(File file, Object marker) {
+        fileCleaningTracker.track(file, marker);
     }
 
     public static void main(String[] args) {
