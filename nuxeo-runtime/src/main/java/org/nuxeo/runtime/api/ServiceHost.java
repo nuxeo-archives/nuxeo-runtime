@@ -26,6 +26,8 @@ import java.io.Serializable;
 import java.util.Map;
 import java.util.Properties;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.nuxeo.common.xmap.annotation.XNode;
 import org.nuxeo.common.xmap.annotation.XNodeList;
 import org.nuxeo.common.xmap.annotation.XNodeMap;
@@ -33,14 +35,17 @@ import org.nuxeo.common.xmap.annotation.XObject;
 
 /**
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
- *
+ * 
  */
 @XObject("server")
 public class ServiceHost implements Serializable {
 
+    private static final Log log = LogFactory.getLog(ServiceHost.class);
+
     private static final long serialVersionUID = 632838284857927463L;
 
-    public static final ServiceHost LOCAL_SERVER = new ServiceHost(RuntimeServiceLocator.class);
+    public static final ServiceHost LOCAL_SERVER = new ServiceHost(
+            RuntimeServiceLocator.class);
 
     @XNode("@class")
     private Class<? extends ServiceLocator> serviceLocatorClass;
@@ -53,11 +58,9 @@ public class ServiceHost implements Serializable {
 
     private Properties properties;
 
-
     private transient ServiceGroup[] groups;
 
     private transient ServiceLocator serviceLocator;
-
 
     public ServiceHost() {
     }
@@ -66,7 +69,8 @@ public class ServiceHost implements Serializable {
         serviceLocatorClass = serverClass;
     }
 
-    public ServiceHost(Class<? extends ServiceLocator> serverClass, String[] groups) {
+    public ServiceHost(Class<? extends ServiceLocator> serverClass,
+            String[] groups) {
         this(serverClass);
         setGroups(groups);
     }
@@ -75,6 +79,14 @@ public class ServiceHost implements Serializable {
         ServiceLocator serviceLocator = serviceLocatorClass.newInstance();
         serviceLocator.initialize(host, port, properties);
         return serviceLocator;
+    }
+
+    public String getServiceLocatorClass() {
+        if (serviceLocatorClass == null) {
+            log.warn("Shouldn't be asking a service host for a service locator... don't have one!");
+            return null;
+        }
+        return serviceLocatorClass.getName();
     }
 
     /**
@@ -106,7 +118,8 @@ public class ServiceHost implements Serializable {
         for (Map.Entry<Object, Object> entry : properties.entrySet()) {
             Object value = entry.getValue();
             if (value.getClass() == String.class) {
-                this.properties.put(entry.getKey().toString(), Framework.expandVars(value.toString().trim()));
+                this.properties.put(entry.getKey().toString(),
+                        Framework.expandVars(value.toString().trim()));
             } else {
                 this.properties.put(entry.getKey(), value);
             }
@@ -128,7 +141,7 @@ public class ServiceHost implements Serializable {
         return properties.getProperty(key, defValue);
     }
 
-    @XNodeList(value = "group",  componentType = String.class, type = String[].class, trim = true)
+    @XNodeList(value = "group", componentType = String.class, type = String[].class, trim = true)
     public void setGroups(String[] groups) {
         this.groups = new ServiceGroup[groups.length];
 
@@ -144,7 +157,7 @@ public class ServiceHost implements Serializable {
      */
     public ServiceGroup[] getGroups() {
         if (groups == null) {
-            groups = new ServiceGroup[] {ServiceManager.getInstance().getRootGroup()};
+            groups = new ServiceGroup[] { ServiceManager.getInstance().getRootGroup() };
         }
         return groups;
     }
@@ -201,13 +214,13 @@ public class ServiceHost implements Serializable {
         return serviceLocatorClass != null ? serviceLocatorClass.hashCode() : 0;
     }
 
-
-    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    private void readObject(ObjectInputStream in) throws IOException,
+            ClassNotFoundException {
         in.defaultReadObject();
         int len = in.readInt();
         String[] ar = new String[len];
-        for (int i=0; i<len; i++) {
-            ar[i] = (String)in.readObject();
+        for (int i = 0; i < len; i++) {
+            ar[i] = (String) in.readObject();
         }
         setGroups(ar);
     }
