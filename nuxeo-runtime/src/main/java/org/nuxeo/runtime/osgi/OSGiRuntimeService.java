@@ -177,6 +177,14 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
         }
     }
 
+    public synchronized RegistrationInfo[] getComponents(BundleContext ctx) {
+        RuntimeContext rc = getContext(context.getBundle());
+        if (rc != null) {
+            return rc.getComponents();
+        }
+        return null;
+    }
+
     public synchronized RuntimeContext getContext(Bundle bundle) {
         return contexts.get(bundle.getSymbolicName());
     }

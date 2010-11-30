@@ -39,7 +39,7 @@ import org.osgi.framework.Bundle;
 
 /**
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
- *
+ * 
  */
 public class DefaultRuntimeContext implements RuntimeContext {
 
@@ -68,6 +68,11 @@ public class DefaultRuntimeContext implements RuntimeContext {
     @Override
     public RuntimeService getRuntime() {
         return runtime;
+    }
+
+    @Override
+    public RegistrationInfo[] getComponents() {
+        throw new UnsupportedOperationException("Not yet implemented");
     }
 
     public Map<String, ComponentName> getDeployedFiles() {

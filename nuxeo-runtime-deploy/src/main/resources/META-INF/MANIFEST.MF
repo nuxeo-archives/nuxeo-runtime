@@ -3,7 +3,6 @@ Export-Package: org.nuxeo.runtime.deployment.preprocessor.install.commands,
  org.nuxeo.runtime.deployment.preprocessor.install,
  org.nuxeo.runtime.deployment.preprocessor,
  org.nuxeo.runtime.deployment.preprocessor.install.filters
-Bundle-ActivationPolicy: lazy
 Bundle-ClassPath: .
 Manifest-Version: 1.0
 Bundle-Name: org.nuxeo.runtime.nuxeo-runtime-deploy
