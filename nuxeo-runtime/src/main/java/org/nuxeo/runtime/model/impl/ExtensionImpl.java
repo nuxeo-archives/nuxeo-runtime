@@ -87,6 +87,11 @@ public class ExtensionImpl implements Extension {
     }
 
     @Override
+    public String getExtensionPointId() {
+        return target.toString().concat("#").concat(extensionPoint);
+    }
+
+    @Override
     public ComponentName getTargetComponent() {
         return target;
     }
@@ -120,8 +125,8 @@ public class ExtensionImpl implements Extension {
     public String getId() {
         if (id == null) {
             if (component != null) {
-                id = component.getName().getName()
-                    + '#' + extensionPoint + '.' + (cnt++);
+                id = component.getName().getName() + '#' + extensionPoint + '.'
+                        + (cnt++);
             } else {
                 id = "null#" + extensionPoint + '.' + (cnt++);
             }
@@ -162,7 +167,8 @@ public class ExtensionImpl implements Extension {
         }
     }
 
-    public static ExtensionImpl fromXML(RuntimeContext context, String xml) throws Exception {
+    public static ExtensionImpl fromXML(RuntimeContext context, String xml)
+            throws Exception {
         return reader.read(context, new ByteArrayInputStream(xml.getBytes()));
     }
 

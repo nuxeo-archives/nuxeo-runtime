@@ -34,7 +34,7 @@ public interface ComponentManager {
      * Adds a component listener.
      * <p>
      * Does nothing if the given listener is already registered.
-     *
+     * 
      * @param listener the component listener to add
      */
     void addComponentListener(ComponentListener listener);
@@ -43,7 +43,7 @@ public interface ComponentManager {
      * Removes a component listener.
      * <p>
      * Does nothing if the given listener is not registered.
-     *
+     * 
      * @param listener the component listener to remove
      */
     void removeComponentListener(ComponentListener listener);
@@ -56,7 +56,9 @@ public interface ComponentManager {
      * <p>
      * If true is returned, the object will be added to the main registry under
      * the name given in RegistrationInfo.
-     *
+     * <p>
+     * This will not activate the component
+     * 
      * @param ri the registration info
      */
     void register(RegistrationInfo ri);
@@ -67,29 +69,54 @@ public interface ComponentManager {
      * This is called by the main registry when the object is unregistered.
      * <p>
      * If true is returned, the object will be removed from the main registry.
-     *
+     * 
      * @param ri the registration info
      */
     void unregister(RegistrationInfo ri);
 
     /**
      * Unregisters a component given its name.
-     *
+     * 
      * @param name the component name
      */
     void unregister(ComponentName name);
 
     /**
+     * Activate the given component. The underlying component is instantiated
+     * and then the activate method will be called and any contributed
+     * extensions are registered.
+     * <p>
+     * This method should be called when the bundle providing the component is
+     * ACTIVATED.
+     * 
+     * @param ri
+     */
+    void activate(RegistrationInfo ri);
+
+    /**
+     * Deactivate the component. The component deactivate method is called and
+     * then the component instance is removed.
+     * 
+     * <p>
+     * This should be called when the bundle is stopped (enters the STOPPING
+     * state).
+     * 
+     * @param ri
+     */
+    void deactivate(RegistrationInfo ri);
+
+    /**
      * Gets the component if there is one having the given name.
-     *
+     * 
      * @param name the component name
-     * @return the component if any was registered with that name, null otherwise
+     * @return the component if any was registered with that name, null
+     *         otherwise
      */
     RegistrationInfo getRegistrationInfo(ComponentName name);
 
     /**
      * Gets object instance managed by the named component.
-     *
+     * 
      * @param name the object name
      * @return the object instance if any. may be null
      */
@@ -97,36 +124,37 @@ public interface ComponentManager {
 
     /**
      * Checks whether or not a component with the given name was registered.
-     *
+     * 
      * @param name the object name
-     * @return true if an object with the given name was registered, false otherwise
+     * @return true if an object with the given name was registered, false
+     *         otherwise
      */
     boolean isRegistered(ComponentName name);
 
     /**
      * Gets the registered components.
-     *
+     * 
      * @return a read-only collection of components
      */
     Collection<RegistrationInfo> getRegistrations();
 
     /**
      * Gets the pending registrations and their dependencies.
-     *
+     * 
      * @return the pending registrations
      */
     Map<ComponentName, Set<ComponentName>> getPendingRegistrations();
 
     /**
      * Gets the pending extensions by component.
-     *
+     * 
      * @return the pending extensions
      */
     Collection<ComponentName> getActivatingRegistrations();
 
     /**
      * Gets the number of registered objects in this registry.
-     *
+     * 
      * @return the number of registered objects
      */
     int size();
@@ -144,7 +172,7 @@ public interface ComponentManager {
      * <p>
      * If the component is not yet activated it will be prior to return the
      * service.
-     *
+     * 
      * @param <T> the service type
      * @param serviceClass the service class
      * @return the service object
@@ -152,16 +180,16 @@ public interface ComponentManager {
     <T> T getService(Class<T> serviceClass);
 
     /**
-     * Get the list of all registered service names
-     * An empty array is returned if no registered services are found.
-     *
+     * Get the list of all registered service names An empty array is returned
+     * if no registered services are found.
+     * 
      * @return an array of registered service.
      */
     String[] getServices();
 
     /**
      * Gets the component that provides the given service.
-     *
+     * 
      * @param serviceClass the service class
      * @return the component or null if none
      */

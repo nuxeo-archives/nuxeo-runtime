@@ -29,28 +29,36 @@ package org.nuxeo.runtime.model;
  * <p>
  * The extension point is also responsible for extracting contribution objects
  * from the extension data, if any.
- *
+ * 
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
  */
 public interface ExtensionPoint {
 
     /**
+     * Get the UID of this extension point.
+     * 
+     * @return
+     */
+    String getId();
+
+    /**
      * Gets the extension point name.
-     *
+     * 
      * @return the extension point name
      */
     String getName();
 
     /**
-     * Gets the object types of the contributions accepted by this extension point.
-     *
+     * Gets the object types of the contributions accepted by this extension
+     * point.
+     * 
      * @return the accepted contribution types
      */
     Class[] getContributions();
 
     /**
      * Gets the comment attached to this extension point if any.
-     *
+     * 
      * @return the comment
      */
     String getDocumentation();
@@ -62,7 +70,7 @@ public interface ExtensionPoint {
      * extending another extension point and should forward any contribution to
      * the base extension. The base extension has the same name as this one but
      * it is declared in another component.
-     *
+     * 
      * @return the base extension point if this extension point is extending
      *         another extension point, or null if none
      */
