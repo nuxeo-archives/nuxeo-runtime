@@ -128,4 +128,9 @@ public class JBossBundleFile implements BundleFile {
         return !di.isDirectory && !di.isXML && !di.isScript;
     }
 
+    @Override
+    public void close() throws IOException {
+        return;
+    }
+
 }

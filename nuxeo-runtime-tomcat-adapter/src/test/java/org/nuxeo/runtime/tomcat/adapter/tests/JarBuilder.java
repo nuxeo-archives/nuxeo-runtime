@@ -34,10 +34,26 @@ import java.util.zip.ZipEntry;
  */
 public class JarBuilder {
 
+    public JarBuilder() throws IOException {
+        super();
+    }
+    
     ArrayList<File> builtFiles = new ArrayList<File>();
 
+    File rootFile = createRootFile();
+    
+    protected static File createRootFile() throws IOException {
+        File tempdir = File.createTempFile("bundles", ".lib");
+        tempdir.delete();
+        tempdir.mkdir();
+        return tempdir;
+    }
+    public File getRootFile() {
+        return rootFile;
+    }
+    
     public URL buildFirst() throws FileNotFoundException, IOException {
-        File file = File.createTempFile("test", ".jar");
+        File file = File.createTempFile("test", ".jar", rootFile);
         builtFiles.add(file);
         JarOutputStream output = new JarOutputStream(new FileOutputStream(file));
         try {
@@ -52,12 +68,12 @@ public class JarBuilder {
     }
 
     public URL buildOther() throws FileNotFoundException, IOException {
-        File file = File.createTempFile("test", ".jar");
+        File file = File.createTempFile("test", ".jar", rootFile);
         JarOutputStream output = new JarOutputStream(new FileOutputStream(file));
         try {
             writeEntry(output, "META-INF/MANIFEST.MF");
             writeEntry(output,
-                    "org/nuxeo/runtime/tomcat/adapter/tests/TestClassLoaderMetaIndex.class");
+                    "org/nuxeo/runtime/tomcat/adapter/tests/TestClassLoaderInstrumentation.class");
             writeEntry(output, "other.marker");
         } finally {
             output.close();
@@ -85,5 +101,6 @@ public class JarBuilder {
             file.delete();
             iterator.remove();
         }
+        rootFile.delete();
     }
 }
