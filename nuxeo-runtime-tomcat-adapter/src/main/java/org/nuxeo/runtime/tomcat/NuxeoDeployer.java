@@ -111,6 +111,7 @@ public class NuxeoDeployer implements LifecycleListener {
                         new Object[] { new String[] { homeDir.getAbsolutePath() } });
                 System.out.println("# Preprocessing done.");
                 ClassLoaderUtil.releaseLoader(cl);
+                System.out.println("# Class loader released");
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to handle event", e);

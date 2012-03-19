@@ -108,7 +108,7 @@ public class TestClassLoaderInstrumentation {
         URLClassLoader ucl = new URLClassLoader(jarURLs, null);
         assertThat(ucl.loadClass(TestClassLoaderInstrumentation.class.getName()), notNullValue());
         JarFileCloser fixer = new JarFileCloser(ucl);
-        fixer.closeJar(jarURLs[1]);
+        fixer.closeLoader(jarURLs[1]);
         File file = new File(jarURLs[1].getFile());
         assertThat(file.delete(), is(true));
         assertThat(ucl.findResource("first.marker"), notNullValue());

@@ -44,13 +44,13 @@ public class JarFileCloser {
     Method getJarFileMethod;
 
     HashMap<?, ?> lmap;
-    
+
     Object factory;
 
     Method factoryGetMethod;
-    
+
     Method factoryCloseMethod;
-    
+
     protected static String serializeURL(URL location) {
         StringBuilder localStringBuilder = new StringBuilder(128);
         String str1 = location.getProtocol();
@@ -75,10 +75,10 @@ public class JarFileCloser {
         return localStringBuilder.toString();
     }
 
-    public JarFileCloser(URLClassLoader loader)
-            throws SecurityException, NoSuchFieldException,
-            IllegalArgumentException, IllegalAccessException,
-            NoSuchMethodException, ClassNotFoundException {
+    public JarFileCloser(URLClassLoader loader) throws SecurityException,
+            NoSuchFieldException, IllegalArgumentException,
+            IllegalAccessException, NoSuchMethodException,
+            ClassNotFoundException {
         this.loader = loader;
         Field ucpField = URLClassLoader.class.getDeclaredField("ucp");
         ucpField.setAccessible(true);
@@ -101,9 +101,11 @@ public class JarFileCloser {
         jarFileFactoryField.setAccessible(true);
         factory = jarFileFactoryField.get(null);
         Class<?> factoryClass = getFactoryClass();
-        factoryGetMethod = factoryClass.getMethod("get", new Class<?>[] { URL.class });
+        factoryGetMethod = factoryClass.getMethod("get",
+                new Class<?>[] { URL.class });
         factoryGetMethod.setAccessible(true);
-        factoryCloseMethod = factoryClass.getMethod("close", new Class<?>[] { JarFile.class });
+        factoryCloseMethod = factoryClass.getMethod("close",
+                new Class<?>[] { JarFile.class });
         factoryCloseMethod.setAccessible(true);
     }
 
@@ -115,10 +117,10 @@ public class JarFileCloser {
         }
         throw new UnsupportedOperationException("Cannot find JarLoader class");
     }
-    
-    
+
     protected static Class<?> getFactoryClass() throws ClassNotFoundException {
-        return JarFileCloser.class.getClassLoader().loadClass("sun.net.www.protocol.jar.JarFileFactory");
+        return JarFileCloser.class.getClassLoader().loadClass(
+                "sun.net.www.protocol.jar.JarFileFactory");
     }
 
     Object getLoader(String name) throws IllegalArgumentException,
@@ -132,21 +134,23 @@ public class JarFileCloser {
         throw new IllegalArgumentException("No such jar " + name);
     }
 
-    public boolean closeJar(URL location) throws IllegalArgumentException,
+    public boolean closeLoader(URL location) throws IllegalArgumentException,
             IllegalAccessException, IOException, InvocationTargetException {
         if (lmap.isEmpty()) {
             return false;
         }
         Object firstKey = lmap.keySet().iterator().next();
-        Object loader = firstKey instanceof URL ? lmap.get(location)
-                : lmap.get(serializeURL(location));
+        Object loader = firstKey instanceof URL ? lmap.remove(location)
+                : lmap.remove(serializeURL(location));
         if (loader == null) {
             return false;
         }
+        loaders.remove(loader);
         JarFile jar = (JarFile) jarField.get(loader);
         jarField.set(loader, null);
         jar.close();
-        JarFile cachedJar  = (JarFile)factoryGetMethod.invoke(factory, new Object[] { location });
+        JarFile cachedJar = (JarFile) factoryGetMethod.invoke(factory,
+                new Object[] { location });
         factoryCloseMethod.invoke(factory, cachedJar);
         cachedJar.close();
         return true;
