@@ -2,7 +2,6 @@ package org.nuxeo.runtime.tomcat.adapter.tests;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThat;
 
 import java.io.ByteArrayOutputStream;
@@ -15,16 +14,16 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import sun.misc.MetaIndex;
 
-import org.apache.log.output.FileOutputLogTarget;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
-import org.nuxeo.runtime.tomcat.JarFileCloser;
 import org.nuxeo.runtime.tomcat.adapter.tests.metaindex.BuildMetaIndex;
+import org.nuxeo.runtime.tomcat.jar.JarFileCloser;
+
+import sun.misc.MetaIndex;
 
 /*
  * (C) Copyright 2012 Nuxeo SA (http://nuxeo.com/) and contributors.
@@ -50,7 +49,7 @@ import org.nuxeo.runtime.tomcat.adapter.tests.metaindex.BuildMetaIndex;
 public class TestClassLoaderInstrumentation {
 
     protected JarBuilder jarBuilder;
-    
+
     @Before
     public void setupJarBuilder() throws IOException {
         jarBuilder = new JarBuilder();
@@ -72,7 +71,7 @@ public class TestClassLoaderInstrumentation {
         assertThat(index, containsString(firstURL.getFile()));
         assertThat(index, containsString(otherURL.getFile()));
     }
-    
+
     @Ignore
     @Test
     public void dontOpenJar() throws MalformedURLException {
@@ -107,9 +106,8 @@ public class TestClassLoaderInstrumentation {
         URL[] jarURLs = new URL[] { firstURL, otherURL };
         URLClassLoader ucl = new URLClassLoader(jarURLs, null);
         assertThat(ucl.loadClass(TestClassLoaderInstrumentation.class.getName()), notNullValue());
-        JarFileCloser fixer = new JarFileCloser(ucl);
-        fixer.closeLoader(jarURLs[1]);
         File file = new File(jarURLs[1].getFile());
+        JarFileCloser.close(file);
         assertThat(file.delete(), is(true));
         assertThat(ucl.findResource("first.marker"), notNullValue());
         ucl.findResource("other.marker"); // should throw an internal error, file does not exist
