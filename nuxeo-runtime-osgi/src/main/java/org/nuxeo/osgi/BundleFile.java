@@ -140,9 +140,9 @@ public interface BundleFile {
 
     /**
      * Close underlying file resources
-     * 
+     *      *
      * @since 5.6
      */
-    void close() throws IOException;
+    void close(OSGiAdapter osgi) throws IOException;
 
 }

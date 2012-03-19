@@ -14,7 +14,7 @@
  * Contributors:
  *     matic
  */
-package org.nuxeo.runtime.tomcat.jar;
+package org.nuxeo.osgi.util.jar;
 
 import java.io.File;
 import java.io.IOException;
@@ -22,6 +22,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.jar.JarFile;
 
 
 /**
@@ -34,19 +35,9 @@ import java.util.Map;
  */
 public class JarFileCloser {
 
-    protected static  JarFileCloser INSTANCE;
-
-    public static void initialize(URLClassLoader sharedResourcesCL, URLClassLoader webappCL) {
-        INSTANCE = new JarFileCloser(sharedResourcesCL, webappCL);
-    }
-
-    public static void cleanup() {
-        INSTANCE = null;
-    }
-
     protected URLClassLoaderCloser sharedResourcesCloser;
 
-    protected URLClassLoaderCloser webappCloser;
+    protected URLClassLoaderCloser applicationCloser;
 
     protected Map<URLClassLoader,URLClassLoaderCloser> urlClassLoderClosers =
             new HashMap<URLClassLoader,URLClassLoaderCloser>();
@@ -54,22 +45,24 @@ public class JarFileCloser {
     protected JarFileFactoryCloser factoryCloser = new JarFileFactoryCloser();
 
 
-    protected JarFileCloser(URLClassLoader sharedResourcesCL, URLClassLoader webappCL)  {
-        sharedResourcesCloser = new URLClassLoaderCloser(sharedResourcesCL);
-        webappCloser = new URLClassLoaderCloser(webappCL);
+    public JarFileCloser(URLClassLoader resourcesCL, ClassLoader appCL)  {
+        sharedResourcesCloser = new URLClassLoaderCloser(resourcesCL);
+        if (appCL instanceof URLClassLoader) {
+            applicationCloser = new URLClassLoaderCloser((URLClassLoader)appCL);
+        }
         factoryCloser = new JarFileFactoryCloser();
     }
 
 
-    protected  void doClose(URL location) throws IOException {
+    public  void close(JarFile file) throws IOException {
+       file.close();
+       URL location = new URL("file:".concat(file.getName()));
        if (sharedResourcesCloser.close(location) == false) {
-           webappCloser.close(location);
+           if (applicationCloser != null) {
+               applicationCloser.close(location);
+           }
        }
        factoryCloser.close(location);
-    }
-
-    public static void close(File file) throws IOException {
-        INSTANCE.doClose(file.toURI().toURL());
     }
 
 }

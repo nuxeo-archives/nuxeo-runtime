@@ -301,11 +301,6 @@ public class JarBundleFile implements BundleFile {
         return getLocation();
     }
 
-    @Override
-    protected void finalize() throws IOException {
-        close();
-    }
-
     protected final URL getEntryUrl(String name) throws MalformedURLException {
         return new URL(urlBase + name);
     }
@@ -334,12 +329,12 @@ public class JarBundleFile implements BundleFile {
     }
 
     @Override
-    public void close() throws IOException {
+    public void close(OSGiAdapter osgi) throws IOException {
         if (jarFile == null) {
             return;
         }
         try {
-            jarFile.close();
+            osgi.getJarFileCloser().close(jarFile);
         } finally {
             jarFile = null;
         }

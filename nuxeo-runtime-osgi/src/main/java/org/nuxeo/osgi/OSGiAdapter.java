@@ -31,6 +31,8 @@ import org.apache.commons.logging.LogFactory;
 import org.nuxeo.common.Environment;
 import org.nuxeo.common.collections.ListenerList;
 import org.nuxeo.osgi.services.PackageAdminImpl;
+import org.nuxeo.osgi.util.jar.JarFileCloser;
+import org.nuxeo.runtime.api.Framework;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleEvent;
 import org.osgi.framework.BundleException;
@@ -76,6 +78,8 @@ public class OSGiAdapter {
 
     protected SystemBundle systemBundle;
 
+    protected JarFileCloser jarFileCloser;
+
     public OSGiAdapter(File workingDir) {
         this(workingDir, new File(System.getProperty(
                 Environment.NUXEO_DATA_DIR, workingDir + File.separator
@@ -104,6 +108,7 @@ public class OSGiAdapter {
         bundleIds = new BundleIdGenerator();
         idTableFile = new File(dataDir, "bundles.ids");
         bundleIds.load(idTableFile);
+        jarFileCloser = new JarFileCloser(Framework.getResourceLoader(), OSGiAdapter.class.getClassLoader());
         // setting up default properties
         properties.put(Constants.FRAMEWORK_VENDOR, "Nuxeo");
         properties.put(Constants.FRAMEWORK_VERSION, "1.0.0");
@@ -159,6 +164,7 @@ public class OSGiAdapter {
         bundleListeners = null;
         serviceListeners = null;
         properties = null;
+        jarFileCloser = null;
     }
 
     public long getBundleId(String symbolicName) {
@@ -256,4 +262,11 @@ public class OSGiAdapter {
         return systemBundle;
     }
 
+    /**
+     * helper for closing jar files during bundle uninstall
+     * @since 5.6
+     */
+    public JarFileCloser getJarFileCloser() {
+        return jarFileCloser;
+    }
 }

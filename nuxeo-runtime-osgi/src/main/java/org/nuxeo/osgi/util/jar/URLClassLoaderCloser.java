@@ -14,7 +14,7 @@
  * Contributors:
  *     matic
  */
-package org.nuxeo.runtime.tomcat.jar;
+package org.nuxeo.osgi.util.jar;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -75,7 +75,7 @@ public class URLClassLoaderCloser  {
     }
 
     protected static Class<?> getJarLoaderClass() throws ClassNotFoundException {
-        return URLClassLoaderCloser.class.getClassLoader().loadClass("sun.misc.URLClassPath");
+        return URLClassLoaderCloser.class.getClassLoader().loadClass("sun.misc.URLClassPath$JarLoader");
     }
 
     protected static String serializeURL(URL location) {

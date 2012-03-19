@@ -1,27 +1,28 @@
 package org.nuxeo.runtime.tomcat.adapter.tests;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertThat;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.reflect.InvocationTargetException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.jar.JarFile;
 
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.nuxeo.osgi.util.jar.JarFileCloser;
 import org.nuxeo.runtime.tomcat.adapter.tests.metaindex.BuildMetaIndex;
-import org.nuxeo.runtime.tomcat.jar.JarFileCloser;
 
 import sun.misc.MetaIndex;
 
@@ -44,7 +45,7 @@ import sun.misc.MetaIndex;
 
 /**
  * @author matic
- *
+ * @since 5.6
  */
 public class TestClassLoaderInstrumentation {
 
@@ -61,6 +62,7 @@ public class TestClassLoaderInstrumentation {
     }
 
     @Test
+    @Ignore
     public void canGenerateMetaIndex() throws FileNotFoundException, IOException {
         URL firstURL = jarBuilder.buildFirst();
         URL otherURL = jarBuilder.buildOther();
@@ -72,8 +74,8 @@ public class TestClassLoaderInstrumentation {
         assertThat(index, containsString(otherURL.getFile()));
     }
 
-    @Ignore
     @Test
+    @Ignore
     public void dontOpenJar() throws MalformedURLException {
         File bundles = new File("bundles");
         MetaIndex.registerDirectory(bundles);
@@ -95,22 +97,20 @@ public class TestClassLoaderInstrumentation {
     }
 
 
-    @Test(expected=java.lang.InternalError.class)
-    public void canDeleteJar() throws ClassNotFoundException, SecurityException, NoSuchFieldException, IllegalArgumentException, IllegalAccessException, IOException, NoSuchMethodException, InvocationTargetException {
+    @Test
+    public void canDeleteJar() throws FileNotFoundException, IOException, ClassNotFoundException {
         URL firstURL = jarBuilder.buildFirst();
         URL otherURL = jarBuilder.buildOther();
-        File rootFile = jarBuilder.getRootFile();
-        File indexFile = new File(rootFile, "meta-index");
-        BuildMetaIndex.build(new PrintStream(new FileOutputStream(indexFile)), firstURL.getPath(), otherURL.getPath());
-        MetaIndex.registerDirectory(rootFile);
         URL[] jarURLs = new URL[] { firstURL, otherURL };
         URLClassLoader ucl = new URLClassLoader(jarURLs, null);
         assertThat(ucl.loadClass(TestClassLoaderInstrumentation.class.getName()), notNullValue());
-        File file = new File(jarURLs[1].getFile());
-        JarFileCloser.close(file);
+        JarFile jarFile = new JarFile(jarURLs[1].getFile());
+        jarFile.getManifest();
+        new JarFileCloser(new URLClassLoader(new URL[] {}), ucl).close(jarFile);
+        File file = new File(jarFile.getName());
         assertThat(file.delete(), is(true));
         assertThat(ucl.findResource("first.marker"), notNullValue());
-        ucl.findResource("other.marker"); // should throw an internal error, file does not exist
+        assertThat(ucl.findResource("other.marker"), nullValue());
     }
 
 

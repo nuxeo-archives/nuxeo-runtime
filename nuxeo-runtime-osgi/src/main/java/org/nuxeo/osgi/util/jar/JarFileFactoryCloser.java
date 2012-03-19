@@ -14,7 +14,7 @@
  * Contributors:
  *     matic
  */
-package org.nuxeo.runtime.tomcat.jar;
+package org.nuxeo.osgi.util.jar;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
