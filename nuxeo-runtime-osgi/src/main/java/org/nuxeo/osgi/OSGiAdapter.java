@@ -108,7 +108,6 @@ public class OSGiAdapter {
         bundleIds = new BundleIdGenerator();
         idTableFile = new File(dataDir, "bundles.ids");
         bundleIds.load(idTableFile);
-        jarFileCloser = new JarFileCloser(Framework.getResourceLoader(), OSGiAdapter.class.getClassLoader());
         // setting up default properties
         properties.put(Constants.FRAMEWORK_VENDOR, "Nuxeo");
         properties.put(Constants.FRAMEWORK_VERSION, "1.0.0");
@@ -230,6 +229,10 @@ public class OSGiAdapter {
     public void fireFrameworkEvent(FrameworkEvent event) {
         log.debug("Firing FrameworkEvent on " + frameworkListeners.size()
                 + " listeners");
+        if (event.getType() == FrameworkEvent.STARTED) {
+            jarFileCloser = new JarFileCloser(Framework.getResourceLoader(),
+                    systemBundle.loader);
+        }
         Object[] listeners = frameworkListeners.getListeners();
         for (Object listener : listeners) {
             log.debug("Start execution of " + listener.getClass() + " listener");

@@ -56,7 +56,7 @@ public class JarFileCloser {
 
     public  void close(JarFile file) throws IOException {
        file.close();
-       URL location = new URL("file:".concat(file.getName()));
+       URL location = new File(file.getName()).toURI().toURL();
        if (sharedResourcesCloser.close(location) == false) {
            if (applicationCloser != null) {
                applicationCloser.close(location);
