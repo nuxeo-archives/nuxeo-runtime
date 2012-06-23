@@ -25,6 +25,7 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -434,10 +435,7 @@ public class ConfigurationGenerator {
         try {
             // Load default configuration
             defaultConfig = new Properties();
-            FileInputStream nuxeoDefaultConfIS = new FileInputStream(
-                    nuxeoDefaultConf);
-            defaultConfig.load(nuxeoDefaultConfIS);
-            nuxeoDefaultConfIS.close();
+            loadTrimmedProperties(defaultConfig, nuxeoDefaultConf);
             userConfig = new Properties(defaultConfig);
 
             // Add useful system properties
@@ -448,9 +446,7 @@ public class ConfigurationGenerator {
                 replaceBackslashes();
             }
             // Load user configuration
-            FileInputStream nuxeoConfIS = new FileInputStream(nuxeoConf);
-            userConfig.load(nuxeoConfIS);
-            nuxeoConfIS.close();
+            loadTrimmedProperties(userConfig, nuxeoConf);
             onceGeneration = "once".equals(userConfig.getProperty(PARAM_FORCE_GENERATION));
             forceGeneration = onceGeneration
                     || Boolean.parseBoolean(userConfig.getProperty(
@@ -754,8 +750,8 @@ public class ConfigurationGenerator {
                 log.error(String.format(
                         "Template '%s' not found with relative or absolute path (%s). "
                                 + "Check your %s parameter, and %s for included files.",
-                        nextToken, chosenTemplate, PARAM_TEMPLATES_NAME,
-                        PARAM_INCLUDED_TEMPLATES));
+                                nextToken, chosenTemplate, PARAM_TEMPLATES_NAME,
+                                PARAM_INCLUDED_TEMPLATES));
                 continue;
             }
             File chosenTemplateConf = new File(chosenTemplate,
@@ -768,18 +764,13 @@ public class ConfigurationGenerator {
             }
 
             Properties subTemplateConf = new Properties();
-            FileInputStream chosenTemplateConfIS = new FileInputStream(
-                    chosenTemplateConf);
-            subTemplateConf.load(chosenTemplateConfIS);
-            chosenTemplateConfIS.close();
+            loadTrimmedProperties(subTemplateConf, chosenTemplateConf);
             String subTemplatesList = subTemplateConf.getProperty(PARAM_INCLUDED_TEMPLATES);
             if (subTemplatesList != null && subTemplatesList.length() > 0) {
                 includeTemplates(subTemplatesList);
             }
             // Load configuration from chosen templates
-            chosenTemplateConfIS = new FileInputStream(chosenTemplateConf);
-            defaultConfig.load(chosenTemplateConfIS);
-            chosenTemplateConfIS.close();
+            loadTrimmedProperties(defaultConfig, chosenTemplateConf);
             String templateInfo = "Include template: "
                     + chosenTemplate.getPath();
             if (quiet) {
@@ -852,7 +843,7 @@ public class ConfigurationGenerator {
      */
     public void saveConfiguration(Map<String, String> changedParameters,
             boolean setGenerationOnceToFalse, boolean setGenerationFalseToOnce)
-            throws ConfigurationException {
+                    throws ConfigurationException {
         this.setOnceToFalse = setGenerationOnceToFalse;
         this.setFalseToOnce = setGenerationFalseToOnce;
         writeConfiguration(loadConfiguration(changedParameters),
@@ -911,7 +902,7 @@ public class ConfigurationGenerator {
 
     private void writeConfiguration(StringBuffer newContent,
             Map<String, String> changedParameters)
-            throws ConfigurationException {
+                    throws ConfigurationException {
         FileWriter writer = null;
         try {
             writer = new FileWriter(nuxeoConf, false);
@@ -1482,13 +1473,13 @@ public class ConfigurationGenerator {
      */
     public void checkDatabaseConnection(String databaseTemplate, String dbName,
             String dbUser, String dbPassword, String dbHost, String dbPort)
-            throws FileNotFoundException, IOException, DatabaseDriverException,
-            SQLException {
+                    throws FileNotFoundException, IOException, DatabaseDriverException,
+                    SQLException {
         File databaseTemplateDir = new File(nuxeoHome, TEMPLATES
                 + File.separator + databaseTemplate);
         Properties templateProperties = new Properties();
-        templateProperties.load(new FileInputStream(new File(
-                databaseTemplateDir, NUXEO_DEFAULT_CONF)));
+        loadTrimmedProperties(templateProperties, new File(databaseTemplateDir,
+                NUXEO_DEFAULT_CONF));
         String classname = templateProperties.getProperty(PARAM_DB_DRIVER);
         // Load driver class from template or default lib directory
         Driver driver = lookupDriver(databaseTemplate, databaseTemplateDir,
@@ -1524,7 +1515,7 @@ public class ConfigurationGenerator {
      */
     private Driver lookupDriver(String databaseTemplate,
             File databaseTemplateDir, String classname)
-            throws FileNotFoundException, IOException, DatabaseDriverException {
+                    throws FileNotFoundException, IOException, DatabaseDriverException {
         File[] files = (File[]) ArrayUtils.addAll( //
                 new File(databaseTemplateDir, "lib").listFiles(), //
                 serverConfigurator.getServerLibDir().listFiles());
@@ -1576,7 +1567,7 @@ public class ConfigurationGenerator {
             if (distribFile.exists()) {
                 try {
                     Properties distributionProperties = new Properties();
-                    distributionProperties.load(new FileInputStream(distribFile));
+                    loadTrimmedProperties(distributionProperties, distribFile);
                     env.loadProperties(distributionProperties);
                 } catch (FileNotFoundException e) {
                     log.error(e);
@@ -1590,5 +1581,45 @@ public class ConfigurationGenerator {
 
         }
         return env;
+    }
+
+    /**
+     * @since 5.6
+     * @param props Properties object to be filled
+     * @param propsFile Properties file
+     * @throws IOException
+     */
+    public static void loadTrimmedProperties(Properties props, File propsFile)
+            throws IOException {
+        if (props == null) {
+            return;
+        }
+        FileInputStream propsIS = new FileInputStream(propsFile);
+        try {
+            loadTrimmedProperties(props, propsIS);
+        } finally {
+            propsIS.close();
+        }
+    }
+
+    /**
+     * @since 5.6
+     * @param props Properties object to be filled
+     * @param propsIS Properties InputStream
+     * @throws IOException
+     */
+    public static void loadTrimmedProperties(Properties props,
+            InputStream propsIS) throws IOException {
+        if (props == null) {
+            return;
+        }
+        Properties p = new Properties();
+        p.load(propsIS);
+        Enumeration pEnum = p.propertyNames();
+        while (pEnum.hasMoreElements()) {
+            String key = (String) pEnum.nextElement();
+            String value = p.getProperty(key);
+            props.put(key.trim(), value.trim());
+        }
     }
 }
