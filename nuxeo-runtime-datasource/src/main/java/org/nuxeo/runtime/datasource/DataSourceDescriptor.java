@@ -34,6 +34,9 @@ import org.nuxeo.common.xmap.annotation.XNodeMap;
 import org.nuxeo.common.xmap.annotation.XObject;
 import org.nuxeo.runtime.api.DataSourceHelper;
 import org.nuxeo.runtime.api.Framework;
+import org.nuxeo.runtime.datasource.pool.AutoCommitInterceptor;
+import org.nuxeo.runtime.datasource.pool.PooledDataSourceFactory;
+import org.nuxeo.runtime.datasource.pool.XADatasourceFactory;
 import org.w3c.dom.Element;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
@@ -106,14 +109,14 @@ public class DataSourceDescriptor {
     public void bindSelf(Context initialContext) throws NamingException {
 
         poolReference = new Reference(XADataSource.class.getName(),
-                DataSourceFactory.class.getName(), null);
+                PooledDataSourceFactory.class.getName(), null);
 
         NamedNodeMap attrs = element.getAttributes();
 
         if (xaDataSource != null) {
             dsReference = new Reference(
                     xaDataSource,
-                    org.apache.tomcat.jdbc.naming.GenericNamingResourcesFactory.class.getName(),
+                    XADatasourceFactory.class.getName(),
                     null);
             for (Entry<String, String> e : properties.entrySet()) {
                 String key = e.getKey();

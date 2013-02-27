@@ -9,7 +9,7 @@
  * Contributors:
  *     Nuxeo - initial API and implementation
  *******************************************************************************/
-package org.nuxeo.runtime.datasource;
+package org.nuxeo.runtime.datasource.pool;
 
 import java.sql.Connection;
 import java.sql.SQLException;

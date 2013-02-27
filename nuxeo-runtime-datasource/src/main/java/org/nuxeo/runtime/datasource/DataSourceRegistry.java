@@ -32,7 +32,7 @@ public class DataSourceRegistry extends ReentrantReadWriteLock {
 
     protected final Map<Name, DataSource> datasources = new HashMap<Name, DataSource>();
 
-    protected final org.apache.tomcat.jdbc.pool.DataSourceFactory delegate = new org.apache.tomcat.jdbc.pool.DataSourceFactory();
+    protected final org.apache.tomcat.jdbc.pool.DataSourceFactory poolFactory = new org.apache.tomcat.jdbc.pool.DataSourceFactory();
 
     public DataSource getOrCreateDatasource(Object obj, Name name,
             Context nameCtx, Hashtable<?, ?> env) throws Exception {
@@ -52,7 +52,7 @@ public class DataSourceRegistry extends ReentrantReadWriteLock {
             if (ds != null) {
                 return ds;
             }
-            ds = (DataSource) delegate.getObjectInstance(obj, name,
+            ds = (DataSource) poolFactory.getObjectInstance(obj, name,
                    nameCtx, env);
             datasources.put(name, ds);
         } finally {

@@ -15,7 +15,7 @@
  *     Florent Guillaume
  */
 
-package org.nuxeo.runtime.datasource;
+package org.nuxeo.runtime.datasource.pool;
 
 import java.lang.management.ManagementFactory;
 import java.util.Hashtable;
@@ -30,6 +30,8 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.tomcat.jdbc.pool.DataSource;
 import org.nuxeo.runtime.api.Framework;
+import org.nuxeo.runtime.datasource.DataSourceComponent;
+import org.nuxeo.runtime.datasource.DataSourceRegistry;
 
 /**
  * JNDI factory for a DataSource that delegates to an tomcat JDBC pool.
@@ -37,14 +39,13 @@ import org.nuxeo.runtime.api.Framework;
  * An instance of this class is registered in JNDI for each datasource
  * configured by the {@link DataSourceComponent}.
  */
-public class DataSourceFactory implements ObjectFactory {
+public class PooledDataSourceFactory implements ObjectFactory {
 
-    private static final Log log = LogFactory.getLog(DataSourceFactory.class);
+    private static final Log log = LogFactory.getLog(PooledDataSourceFactory.class);
 
-     @Override
+    @Override
     public Object getObjectInstance(Object obj, Name name, Context nameCtx,
             Hashtable<?, ?> env) throws Exception {
-
         return Framework.getLocalService(DataSourceRegistry.class).getOrCreateDatasource(obj, name, nameCtx, env);
     }
 
