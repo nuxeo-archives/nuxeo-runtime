@@ -31,7 +31,6 @@ public class PackageBuilderTest {
         builder.addLicense("My License");
 
         String xml = builder.buildManifest();
-        System.out.println(xml);
 
         XMap xmap = StandaloneUpdateService.createXmap();
         try {
