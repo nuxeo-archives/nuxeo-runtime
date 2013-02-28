@@ -50,6 +50,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.runner.RunWith;
 import org.nuxeo.common.Environment;
+import org.nuxeo.common.logging.StreamLogger;
 import org.nuxeo.osgi.BundleFile;
 import org.nuxeo.osgi.BundleImpl;
 import org.nuxeo.osgi.DirectoryBundleFile;
@@ -158,6 +159,7 @@ public class NXRuntimeTestCase implements RuntimeHarness {
 
     @Before
     public void setUp() throws Exception {
+        StreamLogger.redirectOutput();
         System.setProperty("org.nuxeo.runtime.testing", "true");
         // super.setUp();
         wipeRuntime();
