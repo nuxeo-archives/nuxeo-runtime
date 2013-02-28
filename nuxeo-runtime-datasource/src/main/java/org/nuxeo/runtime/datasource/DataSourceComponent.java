@@ -17,6 +17,7 @@
 
 package org.nuxeo.runtime.datasource;
 
+import java.lang.reflect.Constructor;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -31,6 +32,7 @@ import javax.naming.NotContextException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.nuxeo.runtime.api.DataSourceHelper;
+import org.nuxeo.runtime.api.Framework;
 import org.nuxeo.runtime.model.ComponentContext;
 import org.nuxeo.runtime.model.ComponentInstance;
 import org.nuxeo.runtime.model.DefaultComponent;
@@ -56,6 +58,41 @@ public class DataSourceComponent extends DefaultComponent {
     protected final DataSourceRegistry registry = new DataSourceRegistry();
 
     protected InitialContext namingContext;
+
+    protected final DatabaseStarter dbstarter = newDatabaseStarter();
+
+    @Override
+    public void activate(ComponentContext context) throws Exception {
+        super.activate(context);
+        if (dbstarter != null) {
+            dbstarter.start();
+        }
+    }
+
+    public void deactive(ComponentContext context) throws Exception {
+        if (dbstarter != null) {
+            dbstarter.stop();
+        }
+    }
+
+
+    public static DatabaseStarter newDatabaseStarter() {
+        if (!"default".equals(Framework.getProperty("nuxeo.db.type"))) {
+            return null;
+        }
+        Integer dbport = Integer.getInteger("nuxeo.db.port");
+        if (dbport == null) {
+            dbport = 9092;
+        }
+        try {
+            Class<?> clazz = Class.forName(
+                    "org.nuxeo.runtime.datasource.DatabaseH2Starter");
+            Constructor<?> m = clazz.getConstructor(Integer.class);
+            return DatabaseStarter.class.cast(m.newInstance(new Object[] { dbport }));
+        } catch (Exception e) {
+            throw new Error("Cannot load h2 database starter", e);
+        }
+    }
 
     @Override
     public void registerContribution(Object contrib, String extensionPoint,
