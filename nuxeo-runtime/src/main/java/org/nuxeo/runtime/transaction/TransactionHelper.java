@@ -14,7 +14,6 @@ package org.nuxeo.runtime.transaction;
 
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
-import javax.transaction.RollbackException;
 import javax.transaction.Status;
 import javax.transaction.SystemException;
 import javax.transaction.Transaction;
@@ -298,13 +297,8 @@ public class TransactionHelper {
             }
         } catch (Exception e) {
             String msg = "Unable to commit/rollback  " + ut;
-            if (e instanceof RollbackException
-                    && "Unable to commit: transaction marked for rollback".equals(e.getMessage())) {
-                // don't log as error, this happens if there's a
-                // ConcurrentModificationException at transaction end inside VCS
+            if (log.isDebugEnabled()) {
                 log.debug(msg, e);
-            } else {
-                log.error(msg, e);
             }
             throw new TransactionRuntimeException(msg, e);
         }
