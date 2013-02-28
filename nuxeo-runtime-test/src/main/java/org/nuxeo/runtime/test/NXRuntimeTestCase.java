@@ -221,9 +221,9 @@ public class NXRuntimeTestCase implements RuntimeHarness {
                 if (System.getProperties().remove("nuxeo.home") != null) {
                     log.warn("Removed System property nuxeo.home.");
                 }
-                workingDir = File.createTempFile("NXOSGITestFramework",
-                        generateId());
-                workingDir.delete();
+                workingDir = new File("target/nxruntime").getAbsoluteFile();
+                FileUtils.deleteDirectory(workingDir);
+                workingDir.mkdirs();
             }
         } catch (IOException e) {
             log.error("Could not init working directory", e);
