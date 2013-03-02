@@ -18,6 +18,7 @@
  */
 package org.nuxeo.runtime.test.runner;
 
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -25,6 +26,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 
+import org.apache.commons.logging.LogFactory;
 import org.junit.runner.Description;
 import org.junit.runner.notification.Failure;
 import org.junit.runner.notification.RunListener;
@@ -180,9 +182,27 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
     }
 
     protected void initialize() throws Exception {
+        setUncaughtHandler();
         for (RunnerFeature feature : features) {
             feature.initialize(this);
         }
+    }
+
+    UncaughtExceptionHandler lastHandler;
+
+    protected void setUncaughtHandler() {
+        lastHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler() {
+
+            @Override
+            public void uncaughtException(Thread t, Throwable e) {
+                LogFactory.getLog(FeaturesRunner.class).error("Uncaught exception from thread "  + t.getName(), e);
+            }
+        });
+    }
+
+    protected void resetUncaughtHandler() {
+        Thread.setDefaultUncaughtExceptionHandler(lastHandler);
     }
 
     protected void beforeRun() throws Exception {
