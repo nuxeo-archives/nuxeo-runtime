@@ -251,6 +251,20 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
         }
     }
 
+    protected class FeatureModule implements Module {
+
+        protected final RunnerFeature feature;
+
+        FeatureModule(RunnerFeature feature) {
+            this.feature = feature;
+        }
+
+        @Override
+        public void configure(Binder binder) {
+            feature.configure(FeaturesRunner.this, binder);
+        }
+    }
+
     protected Module createModules() {
         Module module = new Module() {
             @Override
@@ -260,16 +274,7 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
             }
         };
         for (final RunnerFeature feature : features) {
-            Module newModule = new Module() {
-
-                @Override
-                public void configure(Binder binder) {
-                    feature.configure(FeaturesRunner.this, binder);
-                }
-
-            };
-            Modules.override(module).with(newModule);
-            module = newModule;
+            module = Modules.override(module).with(new FeatureModule(feature));
         }
         return module;
     }
