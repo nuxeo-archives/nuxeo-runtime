@@ -40,6 +40,7 @@ import com.google.inject.Binder;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.Module;
+import com.google.inject.util.Modules;
 
 /**
  * A Test Case runner that can be extended through features and provide
@@ -250,11 +251,27 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
         }
     }
 
-    protected void configureBindings(Binder binder) {
-        binder.bind(FeaturesRunner.class).toInstance(this);
-        for (RunnerFeature feature : features) {
-            feature.configure(this, binder);
+    protected Module createModules() {
+        Module module = new Module() {
+            @Override
+            public void configure(Binder binder) {
+                binder.bind(FeaturesRunner.class).toInstance(
+                        FeaturesRunner.this);
+            }
+        };
+        for (final RunnerFeature feature : features) {
+            Module newModule = new Module() {
+
+                @Override
+                public void configure(Binder binder) {
+                    feature.configure(FeaturesRunner.this, binder);
+                }
+
+            };
+            Modules.override(module).with(newModule);
+            module = newModule;
         }
+        return module;
     }
 
     /**
@@ -269,14 +286,7 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
     }
 
     protected Injector createInjector() {
-        Module module = new Module() {
-            @Override
-            public void configure(Binder arg0) {
-                configureBindings(arg0);
-            }
-        };
-        // build injector
-        return Guice.createInjector(module);
+        return Guice.createInjector(createModules());
     }
 
     protected final RunListener listener = new RunListener() {
