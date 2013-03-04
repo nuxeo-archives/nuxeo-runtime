@@ -221,7 +221,7 @@ public class LogCaptureFeature extends SimpleFeature {
     @Override
     public void afterMethodRun(FeaturesRunner runner, FrameworkMethod method,
             Object test) throws Exception {
-        if (filter == null) {
+        if (with == null || filter == null) {
             return;
         }
         myResult.clear();
