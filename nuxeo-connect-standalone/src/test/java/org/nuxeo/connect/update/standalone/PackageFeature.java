@@ -22,15 +22,17 @@ import java.io.IOException;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.junit.After;
-import org.junit.Before;
 import org.nuxeo.common.Environment;
 import org.nuxeo.connect.update.PackageException;
 import org.nuxeo.connect.update.PackageUpdateService;
+import org.nuxeo.runtime.test.runner.FeaturesRunner;
+import org.nuxeo.runtime.test.runner.SimpleFeature;
 
-public abstract class PackageTestCase {
+import com.google.inject.Binder;
 
-    protected static final Log log = LogFactory.getLog(PackageTestCase.class);
+public class PackageFeature extends SimpleFeature {
+
+    protected static final Log log = LogFactory.getLog(PackageFeature.class);
 
     protected PackageUpdateService service;
 
@@ -40,13 +42,17 @@ public abstract class PackageTestCase {
      * @see #setService(PackageUpdateService)
      * @see #setupService()
      */
-    @Before
-    public void setUp() throws Exception {
+    @Override
+    public void start(FeaturesRunner runner) throws Exception {
         setupService();
     }
 
-    @After
-    public void tearDown() throws Exception {
+    @Override
+    public void configure(FeaturesRunner runner, Binder binder) {
+        binder.bind(PackageUpdateService.class).toInstance(service);
+    }
+    @Override
+    public void stop(FeaturesRunner runner) throws Exception {
         if (service instanceof StandaloneUpdateService) {
             tearDownStandaloneUpdateService();
         }

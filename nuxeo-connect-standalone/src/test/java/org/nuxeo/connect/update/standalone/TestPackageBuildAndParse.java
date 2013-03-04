@@ -19,7 +19,7 @@ import org.nuxeo.connect.update.task.standalone.UninstallTask;
 import org.nuxeo.connect.update.util.PackageBuilder;
 import org.nuxeo.connect.update.xml.PackageDefinitionImpl;
 
-public class TestPackageBuildAndParse extends PackageTestCase {
+public class TestPackageBuildAndParse extends PackageFeature {
 
     @Test
     public void testBuildAndParse() throws Exception {

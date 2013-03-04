@@ -24,12 +24,18 @@ import java.util.Arrays;
 import java.util.HashSet;
 
 import org.junit.Before;
+import org.junit.runner.RunWith;
 import org.nuxeo.common.Environment;
 import org.nuxeo.common.utils.FileUtils;
 import org.nuxeo.connect.update.PackageDef;
-import org.nuxeo.connect.update.standalone.PackageTestCase;
+import org.nuxeo.connect.update.PackageUpdateService;
+import org.nuxeo.connect.update.standalone.PackageFeature;
 import org.nuxeo.connect.update.task.update.UpdateManager;
 import org.nuxeo.connect.update.xml.XmlWriter;
+import org.nuxeo.runtime.test.runner.Features;
+import org.nuxeo.runtime.test.runner.FeaturesRunner;
+
+import com.google.inject.Inject;
 
 /**
  * We have two packages pkg1 and pkg2:
@@ -53,14 +59,17 @@ import org.nuxeo.connect.update.xml.XmlWriter;
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
  *
  */
-public abstract class SharedFilesTest extends PackageTestCase {
+@RunWith(FeaturesRunner.class)
+@Features(PackageFeature.class)
+public abstract class SharedFilesTest {
 
     protected File bundles;
 
-    @Override
+    @Inject
+    protected PackageUpdateService service;
+
     @Before
     public void setUp() throws Exception {
-        super.setUp();
         // be sure these directories exists and cleanup if needed
         Environment.getDefault().getConfig().mkdirs();
         bundles = new File(Environment.getDefault().getHome(), "bundles");

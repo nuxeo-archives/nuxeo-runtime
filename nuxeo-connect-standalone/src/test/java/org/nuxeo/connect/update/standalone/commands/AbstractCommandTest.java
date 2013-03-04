@@ -27,27 +27,36 @@ import java.util.Map;
 import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.nuxeo.common.Environment;
 import org.nuxeo.connect.update.LocalPackage;
 import org.nuxeo.connect.update.PackageState;
 import org.nuxeo.connect.update.PackageType;
+import org.nuxeo.connect.update.PackageUpdateService;
 import org.nuxeo.connect.update.ValidationStatus;
-import org.nuxeo.connect.update.standalone.PackageTestCase;
+import org.nuxeo.connect.update.standalone.PackageFeature;
 import org.nuxeo.connect.update.task.Task;
 import org.nuxeo.connect.update.util.PackageBuilder;
 import org.nuxeo.connect.update.xml.XmlWriter;
+import org.nuxeo.runtime.test.runner.Features;
+import org.nuxeo.runtime.test.runner.FeaturesRunner;
+
+import com.google.inject.Inject;
 
 /**
  * A base test case for testing command execution.
  *
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
  */
-public abstract class AbstractCommandTest extends PackageTestCase {
+@RunWith(FeaturesRunner.class)
+@Features(PackageFeature.class)
+public abstract class AbstractCommandTest extends PackageFeature {
 
-    @Override
+    @Inject
+    protected PackageUpdateService service;
+
     @Before
     public void setUp() throws Exception {
-        super.setUp();
         // be sure these directories exists
         Environment.getDefault().getConfig().mkdirs();
         new File(Environment.getDefault().getHome(), "bundles").mkdirs();
@@ -206,10 +215,10 @@ public abstract class AbstractCommandTest extends PackageTestCase {
         LocalPackage pkg = service.addPackage(zip);
         if (install(pkg)) {
             // check package installed
-            assertEquals(PackageState.STARTED.getValue(), pkg.getState());
+            assertEquals(PackageState.STARTED, PackageState.getByValue(pkg.getState()));
             if (uninstall(pkg)) {
                 // check package uninstalled
-                assertEquals(PackageState.DOWNLOADED.getValue(), pkg.getState());
+                assertEquals(PackageState.DOWNLOADED, PackageState.getByValue(pkg.getState()));
             }
         }
     }

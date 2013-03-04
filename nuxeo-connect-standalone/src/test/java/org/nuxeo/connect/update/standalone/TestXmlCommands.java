@@ -23,17 +23,28 @@ import java.io.File;
 import java.util.List;
 
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.nuxeo.connect.update.LocalPackage;
 import org.nuxeo.connect.update.PackageType;
+import org.nuxeo.connect.update.PackageUpdateService;
 import org.nuxeo.connect.update.task.standalone.CommandsTask;
 import org.nuxeo.connect.update.task.standalone.InstallTask;
 import org.nuxeo.connect.update.task.standalone.UninstallTask;
 import org.nuxeo.connect.update.util.PackageBuilder;
+import org.nuxeo.runtime.test.runner.Features;
+import org.nuxeo.runtime.test.runner.FeaturesRunner;
+
+import com.google.inject.Inject;
 
 /**
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
  */
-public class TestXmlCommands extends PackageTestCase {
+@RunWith(FeaturesRunner.class)
+@Features(PackageFeature.class)
+public class TestXmlCommands  {
+
+    @Inject
+    protected PackageUpdateService service;
 
     protected File createPackage() throws Exception {
         PackageBuilder builder = new PackageBuilder();

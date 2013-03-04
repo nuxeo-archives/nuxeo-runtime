@@ -48,7 +48,7 @@ public class TestConfig extends AbstractCommandTest {
     public void setUp() throws Exception {
         super.setUp();
 
-        URL url = getClass().getClassLoader().getResource("config/nuxeo.conf");
+        URL url = getClass().getResource("/config/nuxeo.conf");
         File nuxeoConf = new File(
                 org.nuxeo.common.Environment.getDefault().getServerHome(),
                 "nuxeo.conf");
@@ -169,10 +169,8 @@ public class TestConfig extends AbstractCommandTest {
                         "alreadyset.property"));
     }
 
-    @Override
     @After
     public void tearDown() throws Exception {
-        super.tearDown();
         Properties sysProperties = System.getProperties();
         sysProperties.remove(ConfigurationGenerator.NUXEO_CONF);
         sysProperties.remove(Environment.NUXEO_HOME);
