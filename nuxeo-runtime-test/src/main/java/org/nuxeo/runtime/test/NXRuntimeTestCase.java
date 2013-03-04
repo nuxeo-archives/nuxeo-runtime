@@ -25,6 +25,7 @@ import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URL;
@@ -65,6 +66,7 @@ import org.nuxeo.runtime.api.ServiceManager;
 import org.nuxeo.runtime.jtajca.NuxeoContainer;
 import org.nuxeo.runtime.model.RuntimeContext;
 import org.nuxeo.runtime.osgi.OSGiRuntimeContext;
+import org.nuxeo.runtime.test.runner.FeaturesRunner;
 import org.nuxeo.runtime.test.runner.RuntimeHarness;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.FrameworkEvent;
@@ -119,6 +121,8 @@ public class NXRuntimeTestCase implements RuntimeHarness {
 
     protected final List<WorkingDirectoryConfigurator> wdConfigs = new ArrayList<WorkingDirectoryConfigurator>();
 
+    protected UncaughtExceptionHandler lastHandler;
+
     public NXRuntimeTestCase() {
     }
 
@@ -168,6 +172,7 @@ public class NXRuntimeTestCase implements RuntimeHarness {
         } else {
             initOsgiRuntime();
         }
+        setUncaughtHandler();
     }
 
     /**
@@ -181,6 +186,7 @@ public class NXRuntimeTestCase implements RuntimeHarness {
 
     @After
     public void tearDown() throws Exception {
+        resetUncaughtHandler();
         wipeRuntime();
         if (workingDir != null) {
             if (!restart) {
@@ -669,4 +675,18 @@ public class NXRuntimeTestCase implements RuntimeHarness {
         return osgi;
     }
 
+    protected void setUncaughtHandler() {
+        lastHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler() {
+
+            @Override
+            public void uncaughtException(Thread t, Throwable e) {
+                LogFactory.getLog(FeaturesRunner.class).error("Uncaught exception from thread "  + t.getName(), e);
+            }
+        });
+    }
+
+    protected void resetUncaughtHandler() {
+        Thread.setDefaultUncaughtExceptionHandler(lastHandler);
+    }
 }
