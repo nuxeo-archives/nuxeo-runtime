@@ -40,7 +40,7 @@ import com.google.inject.Inject;
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
  */
 @RunWith(FeaturesRunner.class)
-@Features(PackageFeature.class)
+@Features(PackageUpdateFeature.class)
 public class TestXmlCommands  {
 
     @Inject

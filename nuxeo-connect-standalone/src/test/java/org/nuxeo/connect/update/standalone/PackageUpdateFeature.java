@@ -30,9 +30,9 @@ import org.nuxeo.runtime.test.runner.SimpleFeature;
 
 import com.google.inject.Binder;
 
-public class PackageFeature extends SimpleFeature {
+public class PackageUpdateFeature extends SimpleFeature {
 
-    protected static final Log log = LogFactory.getLog(PackageFeature.class);
+    protected static final Log log = LogFactory.getLog(PackageUpdateFeature.class);
 
     protected PackageUpdateService service;
 

@@ -24,6 +24,8 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
@@ -34,7 +36,7 @@ import org.nuxeo.connect.update.PackageState;
 import org.nuxeo.connect.update.PackageType;
 import org.nuxeo.connect.update.PackageUpdateService;
 import org.nuxeo.connect.update.ValidationStatus;
-import org.nuxeo.connect.update.standalone.PackageFeature;
+import org.nuxeo.connect.update.standalone.PackageUpdateFeature;
 import org.nuxeo.connect.update.task.Task;
 import org.nuxeo.connect.update.util.PackageBuilder;
 import org.nuxeo.connect.update.xml.XmlWriter;
@@ -49,8 +51,10 @@ import com.google.inject.Inject;
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
  */
 @RunWith(FeaturesRunner.class)
-@Features(PackageFeature.class)
-public abstract class AbstractCommandTest extends PackageFeature {
+@Features(PackageUpdateFeature.class)
+public abstract class AbstractCommandTest  {
+
+    protected final Log log = LogFactory.getLog(PackageUpdateFeature.class);
 
     @Inject
     protected PackageUpdateService service;

@@ -29,7 +29,7 @@ import org.nuxeo.common.Environment;
 import org.nuxeo.common.utils.FileUtils;
 import org.nuxeo.connect.update.PackageDef;
 import org.nuxeo.connect.update.PackageUpdateService;
-import org.nuxeo.connect.update.standalone.PackageFeature;
+import org.nuxeo.connect.update.standalone.PackageUpdateFeature;
 import org.nuxeo.connect.update.task.update.UpdateManager;
 import org.nuxeo.connect.update.xml.XmlWriter;
 import org.nuxeo.runtime.test.runner.Features;
@@ -60,7 +60,7 @@ import com.google.inject.Inject;
  *
  */
 @RunWith(FeaturesRunner.class)
-@Features(PackageFeature.class)
+@Features(PackageUpdateFeature.class)
 public abstract class SharedFilesTest {
 
     protected File bundles;
