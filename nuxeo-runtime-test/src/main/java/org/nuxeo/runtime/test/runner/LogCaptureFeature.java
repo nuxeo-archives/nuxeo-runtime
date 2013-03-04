@@ -127,7 +127,16 @@ public class LogCaptureFeature extends SimpleFeature {
         }
     }
 
-    protected Filter filter;
+    protected Filter filter = DEFAULT_FILTER;
+
+    protected static final Filter DEFAULT_FILTER = new Filter() {
+
+        @Override
+        public boolean accept(LoggingEvent event) {
+            return true;
+        }
+
+    };
 
     protected final Result myResult = new Result();
 
@@ -170,8 +179,8 @@ public class LogCaptureFeature extends SimpleFeature {
     @Override
     public void configure(FeaturesRunner runner, com.google.inject.Binder binder) {
         binder.bind(Result.class).toInstance(myResult);
-        includeAppender.addFilter(ACCEPT_FILTER);
-        excludeAppender.addFilter(DENY_FILTER);
+        includeAppender.addFilter(ACCEPT);
+        excludeAppender.addFilter(DENY);
     };
 
     protected With with;
@@ -187,7 +196,6 @@ public class LogCaptureFeature extends SimpleFeature {
 
         final Map<Appender, org.apache.log4j.spi.Filter> filters = new HashMap<Appender, org.apache.log4j.spi.Filter>();
 
-        @SuppressWarnings("unchecked")
         LoggerContext(Logger instance, Appender added) {
             logger = instance;
             additivity = instance.getAdditivity();
@@ -229,33 +237,6 @@ public class LogCaptureFeature extends SimpleFeature {
         }
     }
 
-    protected static final org.apache.log4j.spi.Filter DENY_FILTER = new org.apache.log4j.spi.Filter() {
-
-        @Override
-        public int decide(LoggingEvent event) {
-            return DENY;
-        }
-
-    };
-
-    protected static final org.apache.log4j.spi.Filter NEUTRAL_FILTER = new org.apache.log4j.spi.Filter() {
-
-        @Override
-        public int decide(LoggingEvent event) {
-            return NEUTRAL;
-        }
-
-    };
-
-    protected final org.apache.log4j.spi.Filter ACCEPT_FILTER = new org.apache.log4j.spi.Filter() {
-
-        @Override
-        public int decide(LoggingEvent event) {
-            return filter.accept(event) ? ACCEPT : DENY;
-        }
-
-    };
-
     protected void configureLogger(Logger logger, Appender appender,
             boolean additivity) {
         String category = logger.getName();
@@ -263,26 +244,21 @@ public class LogCaptureFeature extends SimpleFeature {
             return;
         }
         LoggerContext context = new LoggerContext(logger, appender);
+        @SuppressWarnings("unchecked")
         Enumeration<Appender> e = logger.getAllAppenders();
         while (e.hasMoreElements()) {
             Appender a = e.nextElement();
             context.filters.put(a, a.getFilter());
             a.clearFilters();
-            a.addFilter(new org.apache.log4j.spi.Filter() {
-
-                @Override
-                public int decide(LoggingEvent event) {
-                    return NEUTRAL;
-                }
-
-            });
+            a.addFilter(NOT_ACCEPT);
         }
         logger.addAppender(appender);
         logger.setAdditivity(additivity);
         altered.put(category, context);
     }
 
-    protected void restoreLoggers() {
+
+     protected void restoreLoggers() {
         for (Class<?> clazz : with.includes()) {
             Logger logger = clazz.isAssignableFrom(LogCaptureFeature.class) ? Logger.getRootLogger()
                     : Logger.getLogger(clazz);
@@ -293,6 +269,7 @@ public class LogCaptureFeature extends SimpleFeature {
     protected void restoreLogger(Logger logger) {
         LoggerContext context = altered.remove(logger.getName());
         logger.removeAppender(context.appender);
+        @SuppressWarnings("unchecked")
         Enumeration<Appender> e = logger.getAllAppenders();
         while (e.hasMoreElements()) {
             Appender a = e.nextElement();
@@ -304,5 +281,37 @@ public class LogCaptureFeature extends SimpleFeature {
         }
         logger.setAdditivity(context.additivity);
     }
+
+    protected static final org.apache.log4j.spi.Filter DENY = new org.apache.log4j.spi.Filter() {
+
+        @Override
+        public int decide(LoggingEvent event) {
+            return DENY;
+        }
+
+    };
+
+
+    protected final org.apache.log4j.spi.Filter ACCEPT = new org.apache.log4j.spi.Filter() {
+
+        @Override
+        public int decide(LoggingEvent event) {
+            return filter.accept(event) ? ACCEPT : DENY;
+        }
+
+    };
+
+
+    protected final org.apache.log4j.spi.Filter NOT_ACCEPT = new org.apache.log4j.spi.Filter() {
+
+        @Override
+        public int decide(LoggingEvent event) {
+            return filter.accept(event) ? DENY : ACCEPT;
+        }
+
+    };
+
+
+
 
 }
