@@ -29,6 +29,7 @@ import java.util.Map;
 
 import org.apache.log4j.Appender;
 import org.apache.log4j.AppenderSkeleton;
+import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.log4j.spi.LoggingEvent;
 import org.junit.Assert;
@@ -60,6 +61,7 @@ public class LogCaptureFeature extends SimpleFeature {
         private static final long serialVersionUID = 1L;
 
     }
+
 
     @Inherited
     @Retention(RetentionPolicy.RUNTIME)
@@ -99,6 +101,15 @@ public class LogCaptureFeature extends SimpleFeature {
             Assert.assertFalse("No log result found", caughtEvents.isEmpty());
         }
 
+        public void assertContains(String... fragment) {
+            int i = 0;
+            for (LoggingEvent event : caughtEvents) {
+                if (!((String) event.getMessage()).contains(fragment[i++])) {
+                    Assert.fail(fragment + " not found in caught events");
+                }
+            }
+        }
+
         public void clear() {
             caughtEvents.clear();
             noFilterFlag = false;
@@ -129,11 +140,29 @@ public class LogCaptureFeature extends SimpleFeature {
 
     protected Filter filter = DEFAULT_FILTER;
 
-    protected static final Filter DEFAULT_FILTER = new Filter() {
+    public static final Filter DEFAULT_FILTER = new Filter() {
 
         @Override
         public boolean accept(LoggingEvent event) {
             return true;
+        }
+
+    };
+
+    public static class FilterErrors implements Filter {
+
+        @Override
+        public boolean accept(LoggingEvent event) {
+            return event.getLevel().isGreaterOrEqual(Level.WARN);
+        }
+
+    };
+
+    public static class FilterWarnAndErrors implements Filter {
+
+        @Override
+        public boolean accept(LoggingEvent event) {
+            return event.getLevel().isGreaterOrEqual(Level.WARN);
         }
 
     };
