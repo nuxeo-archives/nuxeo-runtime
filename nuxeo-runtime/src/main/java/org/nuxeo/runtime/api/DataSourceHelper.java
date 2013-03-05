@@ -61,7 +61,7 @@ public class DataSourceHelper {
             prefix = DEFAULT_PREFIX;
         } else {
             // unknown, use Java EE standard
-            log.error("Unknown JNDI Context class: " + name);
+            log.info("unknown server, using default jndi prefix");
             prefix = DEFAULT_PREFIX;
         }
         log.info("Using JDBC JNDI prefix: " + prefix);
