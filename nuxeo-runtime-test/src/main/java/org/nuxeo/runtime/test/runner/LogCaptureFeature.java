@@ -23,11 +23,15 @@ import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Enumeration;
-import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 import org.apache.log4j.Appender;
 import org.apache.log4j.AppenderSkeleton;
@@ -35,6 +39,7 @@ import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.log4j.spi.LoggingEvent;
+import org.apache.log4j.spi.OptionHandler;
 import org.junit.Assert;
 import org.junit.runners.model.FrameworkMethod;
 import org.nuxeo.common.logging.JavaUtilLoggingHelper;
@@ -126,7 +131,7 @@ public class LogCaptureFeature extends SimpleFeature {
         /**
          * Custom implementation of a filter to select event to capture.
          */
-        Class<? extends LogCaptureFeature.Filter> value() default LogCaptureFeature.Filter.Errors.class;
+        Class<? extends LogCaptureFeature.Filter> value() default LogCaptureFeature.Filter.Closed.class;
 
         /**
          * Filter appended events
@@ -136,12 +141,8 @@ public class LogCaptureFeature extends SimpleFeature {
         /**
          * Filter these categories
          */
-        Class<?>[] includes() default LogCaptureFeature.class;
+        Class<?>[] loggers() default LogCaptureFeature.class;
 
-        /**
-         * Excludes these categories
-         */
-        Class<?>[] excludes() default LogCaptureFeature.class;
     }
 
     public class Result {
@@ -168,18 +169,18 @@ public class LogCaptureFeature extends SimpleFeature {
             assertEquals("uncaught errors, should be filtered through log capture with annotion", 0, uncaughtErrors.size());
         }
 
-        public void assertContains(String... fragment) {
+        public void assertContains(String... fragments) {
             checkNoFilter();
-            int i = 0;
-            int expectedDiff = caughtEvents.size() - fragment.length;
-            if (expectedDiff != 0) {
-                Assert.fail("#caught events does not match, missmatch off " + expectedDiff);
-            }
-            for (LoggingEvent event : caughtEvents) {
-                if (!((String) event.getMessage()).contains(fragment[i++])) {
-                    Assert.fail(fragment + " not found in caught events");
+
+            Iterator<LoggingEvent> events = caughtEvents.iterator();
+
+            for (String fragment:fragments) {
+                LoggingEvent event = events.next();
+                if (!((String) event.getMessage()).contains(fragment)) {
+                    Assert.fail(fragment + " not found in caught exception");
                 }
             }
+
         }
 
         public void clear() {
@@ -242,9 +243,7 @@ public class LogCaptureFeature extends SimpleFeature {
 
     protected final Result myResult = new Result();
 
-    protected final Appender includeAppender = new IncludeAppender();
-
-    protected final Appender excludeAppender = new ExcludeAppender();
+    protected final Appender caughtAppender = new IncludeAppender();
 
     protected final Appender uncaughtErrorsAppender = new UncaughtErrorsAppender();
 
@@ -256,9 +255,8 @@ public class LogCaptureFeature extends SimpleFeature {
     @Override
     public void start(FeaturesRunner runner) throws Exception {
         JavaUtilLoggingHelper.redirectToApacheCommons(java.util.logging.Level.INFO);
-        includeAppender.addFilter(ACCEPT_FILTERED);
+        caughtAppender.addFilter(ACCEPT_FILTERED);
         uncaughtErrorsAppender.addFilter(ACCEPT_UNCAUGHT_ERRORS);
-        excludeAppender.addFilter(DENY);
     }
 
     @Override
@@ -268,21 +266,18 @@ public class LogCaptureFeature extends SimpleFeature {
 
     protected With with;
 
-    protected final Map<String, LoggerContext> altered = new HashMap<String, LoggerContext>();
+    protected final Set<LoggerContext> alteredLoggers = new HashSet<LoggerContext>();
 
     protected class LoggerContext {
         final Logger logger;
 
-        final Appender appender;
-
         final boolean additivity;
 
-        final Map<Appender, org.apache.log4j.spi.Filter> filters = new HashMap<Appender, org.apache.log4j.spi.Filter>();
-
-        LoggerContext(Logger instance, Appender added) {
+        final Appender console;
+        LoggerContext(Logger instance) {
             logger = instance;
             additivity = instance.getAdditivity();
-            appender = added;
+            console = instance.getAppender("CONSOLE");
         }
 
     }
@@ -294,9 +289,7 @@ public class LogCaptureFeature extends SimpleFeature {
         with = runner.getConfig(method, With.class);
         Class<? extends Filter> filterClass = with.value();
         filter = filterClass.newInstance();
-        configureLoggers(with.includes(), includeAppender, false);
-        configureLoggers(with.excludes(), excludeAppender, false);
-        Logger.getRootLogger().addAppender(uncaughtErrorsAppender);
+        configureLoggers();
     }
 
     @Override
@@ -311,72 +304,85 @@ public class LogCaptureFeature extends SimpleFeature {
         }
     }
 
-    protected void configureLoggers(Class<?>[] categories, Appender appender,
-            boolean additivity) {
-        for (Class<?> category : categories) {
-            Logger logger = category.isAssignableFrom(LogCaptureFeature.class) ? Logger.getRootLogger()
+    protected void configureLoggers() {
+        Logger rootLogger = Logger.getRootLogger();
+        for (Class<?> category : with.loggers()) {
+            Logger logger = category.isAssignableFrom(LogCaptureFeature.class) ? rootLogger
                     : Logger.getLogger(category);
-            configureLogger(logger, appender, additivity);
+            configureLogger(logger);
         }
+        rootLogger.addAppender(uncaughtErrorsAppender);
     }
 
-    protected void configureLogger(Logger logger, Appender appender,
-            boolean additivity) {
-        String category = logger.getName();
-        if (altered.containsKey(category)) {
-            return;
-        }
-        LoggerContext context = new LoggerContext(logger, appender);
-        @SuppressWarnings("unchecked")
+    protected ConsoleAppender getConsoleAppender(Logger logger) {
         Enumeration<Appender> e = logger.getAllAppenders();
         while (e.hasMoreElements()) {
             Appender a = e.nextElement();
             if (a instanceof ConsoleAppender) {
-                context.filters.put(a, a.getFilter());
-                a.clearFilters();
-                a.addFilter(ACCEPT_NOT_FILTERED);
+                return (ConsoleAppender)a;
             }
         }
-        logger.addAppender(appender);
-        logger.setAdditivity(additivity);
-        altered.put(category, context);
+        return null;
+    }
+
+    protected class ConsoleInvocationHandler implements  InvocationHandler {
+
+        protected final Appender wrapped;
+
+         protected ConsoleInvocationHandler(Appender object) {
+            wrapped = object;
+        }
+
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args)
+                throws Throwable {
+            if ("doAppend".equals(method.getName())) {
+                if (filter.accept((LoggingEvent)args[0])) {
+                    return null;
+                }
+            }
+            return method.invoke(wrapped, args);
+        }
+
+    }
+
+    protected Appender wrapAppender(Appender appender) {
+        InvocationHandler handler = new ConsoleInvocationHandler(appender);
+        return Appender.class.cast(Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { Appender.class,  OptionHandler.class }, handler));
+    }
+
+    protected Appender unwrapAppender(Appender appender) {
+       return ((ConsoleInvocationHandler)Proxy.getInvocationHandler(appender)).wrapped;
+    }
+
+    protected void configureLogger(Logger logger) {
+        LoggerContext context = new LoggerContext(logger);
+        if (context.console != null) {
+            logger.removeAppender("CONSOLE");
+            logger.addAppender(wrapAppender(context.console));
+        }
+        logger.addAppender(caughtAppender);
+        logger.setAdditivity(false);
+        alteredLoggers.add(context);
     }
 
     protected void restoreLoggers() {
-        Logger.getRootLogger().removeAppender(uncaughtErrorsAppender);
-        for (Class<?> clazz : with.includes()) {
-            Logger logger = clazz.isAssignableFrom(LogCaptureFeature.class) ? Logger.getRootLogger()
-                    : Logger.getLogger(clazz);
-            restoreLogger(logger);
+        Logger rootLogger = Logger.getRootLogger();
+        rootLogger.removeAppender(uncaughtErrorsAppender);
+        for (LoggerContext context:alteredLoggers) {
+            restoreLogger(context);
         }
     }
 
-    protected void restoreLogger(Logger logger) {
-        LoggerContext context = altered.remove(logger.getName());
-        logger.removeAppender(context.appender);
-        @SuppressWarnings("unchecked")
-        Enumeration<Appender> e = logger.getAllAppenders();
-        while (e.hasMoreElements()) {
-            Appender a = e.nextElement();
-            if (a instanceof ConsoleAppender) {
-                a.clearFilters();
-                org.apache.log4j.spi.Filter last = context.filters.get(a);
-                if (last != null) {
-                    a.addFilter(last);
-                }
-            }
+    protected void restoreLogger(LoggerContext context) {
+        context.logger.removeAppender(caughtAppender);
+        if (context.console != null) {
+            context.logger.removeAppender("CONSOLE");
+            context.logger.addAppender(context.console);
         }
-        logger.setAdditivity(context.additivity);
+        context.logger.setAdditivity(context.additivity);
     }
-
-    protected static final org.apache.log4j.spi.Filter DENY = new org.apache.log4j.spi.Filter() {
-
-        @Override
-        public int decide(LoggingEvent event) {
-            return DENY;
-        }
-
-    };
 
     protected final org.apache.log4j.spi.Filter ACCEPT_FILTERED = new org.apache.log4j.spi.Filter() {
 
@@ -387,7 +393,7 @@ public class LogCaptureFeature extends SimpleFeature {
 
     };
 
-    protected final org.apache.log4j.spi.Filter ACCEPT_NOT_FILTERED = new org.apache.log4j.spi.Filter() {
+    protected final org.apache.log4j.spi.Filter ACCEPT_UNCAUGHT = new org.apache.log4j.spi.Filter() {
 
         @Override
         public int decide(LoggingEvent event) {
@@ -400,7 +406,7 @@ public class LogCaptureFeature extends SimpleFeature {
 
         @Override
         public int decide(LoggingEvent event) {
-            if (Level.ERROR.isGreaterOrEqual(event.getLevel())) {
+            if (!event.getLevel().isGreaterOrEqual(Level.ERROR)) {
                 return DENY;
             }
             if (myResult.caughtEvents.contains(event)) {
