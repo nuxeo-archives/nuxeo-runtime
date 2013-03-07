@@ -16,6 +16,8 @@
  */
 package org.nuxeo.runtime.test.runner;
 
+import static org.junit.Assert.assertEquals;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
@@ -34,6 +36,7 @@ import org.apache.log4j.Logger;
 import org.apache.log4j.spi.LoggingEvent;
 import org.junit.Assert;
 import org.junit.runners.model.FrameworkMethod;
+import org.nuxeo.common.logging.JavaUtilLoggingHelper;
 
 import com.google.inject.Inject;
 
@@ -54,14 +57,66 @@ import com.google.inject.Inject;
  *
  * @since 5.7
  */
+@Features(LogTraceFeature.class)
 public class LogCaptureFeature extends SimpleFeature {
+
+    protected class UncaughtErrorsAppender extends AppenderSkeleton {
+
+        @Override
+        public boolean requiresLayout() {
+            return false;
+        }
+
+        @Override
+        public void close() {
+
+        }
+
+        @Override
+        protected void append(LoggingEvent event) {
+            myResult.uncaughtErrors.add(event);
+        }
+    }
+
+    protected class ExcludeAppender extends AppenderSkeleton {
+        @Override
+        public boolean requiresLayout() {
+            return false;
+        }
+
+        @Override
+        public void close() {
+
+        }
+
+        @Override
+        protected void append(LoggingEvent event) {
+
+        }
+    }
+
+    protected class IncludeAppender extends AppenderSkeleton {
+
+        @Override
+        public boolean requiresLayout() {
+            return false;
+        }
+
+        @Override
+        public void close() {
+        }
+
+        @Override
+        protected void append(LoggingEvent event) {
+            myResult.caughtEvents.add(event);
+        }
+    }
 
     public class NoFilterError extends Error {
 
         private static final long serialVersionUID = 1L;
 
     }
-
 
     @Inherited
     @Retention(RetentionPolicy.RUNTIME)
@@ -70,7 +125,7 @@ public class LogCaptureFeature extends SimpleFeature {
         /**
          * Custom implementation of a filter to select event to capture.
          */
-        Class<? extends LogCaptureFeature.Filter> value() default LogCaptureFeature.Filter.Open.class;
+        Class<? extends LogCaptureFeature.Filter> value() default LogCaptureFeature.Filter.Errors.class;
 
         /**
          * Filter appended events
@@ -90,19 +145,35 @@ public class LogCaptureFeature extends SimpleFeature {
 
     public class Result {
 
-        protected final ArrayList<LoggingEvent> caughtEvents = new ArrayList<LoggingEvent>();
+        public final ArrayList<LoggingEvent> caughtEvents = new ArrayList<LoggingEvent>();
+
+        public final ArrayList<LoggingEvent> uncaughtErrors = new ArrayList<LoggingEvent>();
 
         protected boolean noFilterFlag = false;
 
-        public void assertHasEvent() throws NoFilterError {
+        protected void checkNoFilter() {
             if (noFilterFlag) {
                 throw new LogCaptureFeature.NoFilterError();
             }
+        }
+
+        public void assertHasEvent() throws NoFilterError {
+            checkNoFilter();
             Assert.assertFalse("No log result found", caughtEvents.isEmpty());
         }
 
+        public void assertHasNoUncaughtErrors() {
+            checkNoFilter();
+            assertEquals("uncaught errors, should be filtered through log capture with annotion", 0, uncaughtErrors.size());
+        }
+
         public void assertContains(String... fragment) {
+            checkNoFilter();
             int i = 0;
+            int expectedDiff = caughtEvents.size() - fragment.length;
+            if (expectedDiff != 0) {
+                Assert.fail("#caught events does not match, missmatch off " + expectedDiff);
+            }
             for (LoggingEvent event : caughtEvents) {
                 if (!((String) event.getMessage()).contains(fragment[i++])) {
                     Assert.fail(fragment + " not found in caught events");
@@ -112,6 +183,7 @@ public class LogCaptureFeature extends SimpleFeature {
 
         public void clear() {
             caughtEvents.clear();
+            uncaughtErrors.clear();
             noFilterFlag = false;
         }
 
@@ -136,81 +208,62 @@ public class LogCaptureFeature extends SimpleFeature {
             }
 
         }
+
+        public class Closed implements Filter {
+
+            @Override
+            public boolean accept(LoggingEvent event) {
+                return false;
+            }
+
+        }
+
+        public class Errors implements Filter {
+
+            @Override
+            public boolean accept(LoggingEvent event) {
+                return event.getLevel().isGreaterOrEqual(Level.ERROR);
+            }
+
+        };
+
+        public class WarnAndErrors implements Filter {
+
+            @Override
+            public boolean accept(LoggingEvent event) {
+                return event.getLevel().isGreaterOrEqual(Level.WARN);
+            }
+
+        };
     }
 
-    protected Filter filter = DEFAULT_FILTER;
-
-    public static final Filter DEFAULT_FILTER = new Filter() {
-
-        @Override
-        public boolean accept(LoggingEvent event) {
-            return true;
-        }
-
-    };
-
-    public static class FilterErrors implements Filter {
-
-        @Override
-        public boolean accept(LoggingEvent event) {
-            return event.getLevel().isGreaterOrEqual(Level.WARN);
-        }
-
-    };
-
-    public static class FilterWarnAndErrors implements Filter {
-
-        @Override
-        public boolean accept(LoggingEvent event) {
-            return event.getLevel().isGreaterOrEqual(Level.WARN);
-        }
-
-    };
+    protected Filter filter;
 
     protected final Result myResult = new Result();
 
-    protected Appender includeAppender = new AppenderSkeleton() {
+    protected final Appender includeAppender = new IncludeAppender();
 
-        @Override
-        public boolean requiresLayout() {
-            return false;
-        }
+    protected final Appender excludeAppender = new ExcludeAppender();
 
-        @Override
-        public void close() {
-        }
-
-        @Override
-        protected void append(LoggingEvent event) {
-            myResult.caughtEvents.add(event);
-        }
-
-    };
-
-    protected Appender excludeAppender = new AppenderSkeleton() {
-
-        @Override
-        public boolean requiresLayout() {
-            return false;
-        }
-
-        @Override
-        public void close() {
-
-        }
-
-        @Override
-        protected void append(LoggingEvent event) {
-
-        }
-    };
+    protected final Appender uncaughtErrorsAppender = new UncaughtErrorsAppender();
 
     @Override
     public void configure(FeaturesRunner runner, com.google.inject.Binder binder) {
         binder.bind(Result.class).toInstance(myResult);
-        includeAppender.addFilter(ACCEPT);
-        excludeAppender.addFilter(DENY);
     };
+
+    @Override
+    public void start(FeaturesRunner runner) throws Exception {
+        JavaUtilLoggingHelper.redirectToApacheCommons(java.util.logging.Level.INFO);
+        includeAppender.addFilter(ACCEPT_FILTERED);
+        uncaughtErrorsAppender.addFilter(ACCEPT_UNCAUGHT_ERRORS);
+        excludeAppender.addFilter(DENY);
+    }
+
+    @Override
+    public void stop(FeaturesRunner runner) throws Exception {
+        JavaUtilLoggingHelper.reset();
+    }
 
     protected With with;
 
@@ -238,23 +291,23 @@ public class LogCaptureFeature extends SimpleFeature {
             Object test) throws Exception {
 
         with = runner.getConfig(method, With.class);
-        if (with == null) {
-            return;
-        }
         Class<? extends Filter> filterClass = with.value();
         filter = filterClass.newInstance();
-        configureLoggers(with.includes(), includeAppender, with.additivity());
+        configureLoggers(with.includes(), includeAppender, false);
         configureLoggers(with.excludes(), excludeAppender, false);
+        Logger.getRootLogger().addAppender(uncaughtErrorsAppender);
     }
 
     @Override
     public void afterMethodRun(FeaturesRunner runner, FrameworkMethod method,
             Object test) throws Exception {
-        if (with == null || filter == null) {
-            return;
+        try {
+            myResult.assertHasNoUncaughtErrors();
+        } finally {
+            restoreLoggers();
+            filter = null;
+            myResult.clear();
         }
-        myResult.clear();
-        restoreLoggers();
     }
 
     protected void configureLoggers(Class<?>[] categories, Appender appender,
@@ -279,15 +332,14 @@ public class LogCaptureFeature extends SimpleFeature {
             Appender a = e.nextElement();
             context.filters.put(a, a.getFilter());
             a.clearFilters();
-            a.addFilter(NOT_ACCEPT);
+            a.addFilter(ACCEPT_NOT_FILTERED);
         }
         logger.addAppender(appender);
         logger.setAdditivity(additivity);
         altered.put(category, context);
     }
 
-
-     protected void restoreLoggers() {
+    protected void restoreLoggers() {
         for (Class<?> clazz : with.includes()) {
             Logger logger = clazz.isAssignableFrom(LogCaptureFeature.class) ? Logger.getRootLogger()
                     : Logger.getLogger(clazz);
@@ -320,8 +372,7 @@ public class LogCaptureFeature extends SimpleFeature {
 
     };
 
-
-    protected final org.apache.log4j.spi.Filter ACCEPT = new org.apache.log4j.spi.Filter() {
+    protected final org.apache.log4j.spi.Filter ACCEPT_FILTERED = new org.apache.log4j.spi.Filter() {
 
         @Override
         public int decide(LoggingEvent event) {
@@ -330,8 +381,7 @@ public class LogCaptureFeature extends SimpleFeature {
 
     };
 
-
-    protected final org.apache.log4j.spi.Filter NOT_ACCEPT = new org.apache.log4j.spi.Filter() {
+    protected final org.apache.log4j.spi.Filter ACCEPT_NOT_FILTERED = new org.apache.log4j.spi.Filter() {
 
         @Override
         public int decide(LoggingEvent event) {
@@ -340,7 +390,19 @@ public class LogCaptureFeature extends SimpleFeature {
 
     };
 
+    protected final org.apache.log4j.spi.Filter ACCEPT_UNCAUGHT_ERRORS = new org.apache.log4j.spi.Filter() {
 
+        @Override
+        public int decide(LoggingEvent event) {
+            if (Level.ERROR.isGreaterOrEqual(event.getLevel())) {
+                return DENY;
+            }
+            if (myResult.caughtEvents.contains(event)) {
+                return DENY;
+            }
+            return ACCEPT;
+        }
 
+    };
 
 }

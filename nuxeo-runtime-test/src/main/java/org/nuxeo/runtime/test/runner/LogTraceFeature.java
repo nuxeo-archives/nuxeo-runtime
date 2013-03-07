@@ -14,11 +14,16 @@
  */
 package org.nuxeo.runtime.test.runner;
 
+import java.lang.reflect.Method;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.log4j.Appender;
 import org.apache.log4j.FileAppender;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.log4j.xml.XMLLayout;
+import org.junit.runners.model.FrameworkMethod;
 
 /**
  * Test feature to capture all trace in xml file.</br>
@@ -27,7 +32,9 @@ import org.apache.log4j.xml.XMLLayout;
  */
 public class LogTraceFeature extends SimpleFeature {
 
-    protected Logger rootLogger = Logger.getRootLogger();
+	protected final Log log = LogFactory.getLog(LogTraceFeature.class);
+
+    protected final Logger rootLogger = Logger.getRootLogger();
 
     protected Level previousLevel;
 
@@ -51,5 +58,28 @@ public class LogTraceFeature extends SimpleFeature {
         rootLogger.removeAppender(appender);
         rootLogger.setLevel(previousLevel);
         appender = null;
+    }
+
+    @Override
+    public void testCreated(Object test) throws Exception {
+        log.trace("test created " + test.getClass());
+    }
+
+    @Override
+    public void beforeMethodRun(FeaturesRunner runner, FrameworkMethod method,
+            Object test) throws Exception {
+        traceRun("test -> ", method.getMethod());
+        super.beforeMethodRun(runner, method, test);
+    }
+
+    @Override
+    public void afterMethodRun(FeaturesRunner runner, FrameworkMethod method,
+            Object test) throws Exception {
+        traceRun("test <-", method.getMethod());
+    	super.beforeMethodRun(runner, method, test);
+    }
+
+    protected void traceRun(String message, Method method) {
+        log.trace(String.format("%s %s.%s()", message, method.getDeclaringClass(), method.getName()));
     }
 }
