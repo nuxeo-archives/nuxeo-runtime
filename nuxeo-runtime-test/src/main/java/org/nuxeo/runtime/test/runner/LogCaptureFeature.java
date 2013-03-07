@@ -31,6 +31,7 @@ import java.util.Map;
 
 import org.apache.log4j.Appender;
 import org.apache.log4j.AppenderSkeleton;
+import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.log4j.spi.LoggingEvent;
@@ -330,9 +331,11 @@ public class LogCaptureFeature extends SimpleFeature {
         Enumeration<Appender> e = logger.getAllAppenders();
         while (e.hasMoreElements()) {
             Appender a = e.nextElement();
-            context.filters.put(a, a.getFilter());
-            a.clearFilters();
-            a.addFilter(ACCEPT_NOT_FILTERED);
+            if (a instanceof ConsoleAppender) {
+                context.filters.put(a, a.getFilter());
+                a.clearFilters();
+                a.addFilter(ACCEPT_NOT_FILTERED);
+            }
         }
         logger.addAppender(appender);
         logger.setAdditivity(additivity);
@@ -340,6 +343,7 @@ public class LogCaptureFeature extends SimpleFeature {
     }
 
     protected void restoreLoggers() {
+        Logger.getRootLogger().removeAppender(uncaughtErrorsAppender);
         for (Class<?> clazz : with.includes()) {
             Logger logger = clazz.isAssignableFrom(LogCaptureFeature.class) ? Logger.getRootLogger()
                     : Logger.getLogger(clazz);
@@ -354,10 +358,12 @@ public class LogCaptureFeature extends SimpleFeature {
         Enumeration<Appender> e = logger.getAllAppenders();
         while (e.hasMoreElements()) {
             Appender a = e.nextElement();
-            a.clearFilters();
-            org.apache.log4j.spi.Filter last = context.filters.get(a);
-            if (last != null) {
-                a.addFilter(last);
+            if (a instanceof ConsoleAppender) {
+                a.clearFilters();
+                org.apache.log4j.spi.Filter last = context.filters.get(a);
+                if (last != null) {
+                    a.addFilter(last);
+                }
             }
         }
         logger.setAdditivity(context.additivity);
