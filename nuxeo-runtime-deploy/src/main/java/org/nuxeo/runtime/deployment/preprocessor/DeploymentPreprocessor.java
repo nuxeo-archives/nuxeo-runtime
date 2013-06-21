@@ -116,7 +116,7 @@ public class DeploymentPreprocessor {
 
     protected void init(ContainerDescriptor cd) throws Exception {
         cd.context = new CommandContextImpl(cd.directory);
-        initSeamHotDeploy(cd.context);
+        initContextProperties(cd.context);
         // run container install instructions if any
         if (cd.install != null) {
             cd.install.setLogger(log);
@@ -137,17 +137,25 @@ public class DeploymentPreprocessor {
         }
     }
 
-    protected void initSeamHotDeploy(CommandContext ctx) throws IOException {
+    protected void initContextProperties(CommandContext ctx) throws IOException {
         ConfigurationGenerator confGen = new ConfigurationGenerator();
-        // this init detects if seam debug mode should be set
         confGen.init();
         Properties props = confGen.getUserConfig();
+
+        // init Seam hot deploy
         String seamDebugPropValue = props.getProperty(
                 ConfigurationGenerator.SEAM_DEBUG_SYSTEM_PROP, "false");
         boolean isSeamDebugSet = Boolean.TRUE.equals(Boolean.valueOf(seamDebugPropValue));
         if (isSeamDebugSet) {
             // not sure where it's used, but assume this is useful
             ctx.put(ConfigurationGenerator.SEAM_DEBUG_SYSTEM_PROP, "true");
+        }
+
+        // init configuration variables for JSF
+        String[] jsfProps = new String[] { "nuxeo.jsf.numberOfViewsInSession",
+                "nuxeo.jsf.numberOfLogicalViews" };
+        for (String jsfProp : jsfProps) {
+            ctx.put(jsfProp, props.getProperty(jsfProp, "4"));
         }
     }
 
@@ -266,6 +274,8 @@ public class DeploymentPreprocessor {
             if (fd == null || fd.isMarker()) {
                 continue; // should be a marker entry like the "all" one.
             }
+
+            // additional properties put on deployment context
             cd.context.put("bundle.fileName", fd.filePath);
             cd.context.put("bundle.shortName", fd.fileName);
             cd.context.put("bundle", fd.name);
@@ -534,8 +544,8 @@ public class DeploymentPreprocessor {
      * of bundles. Bundles must be ordered by the caller to have same
      * deployment order on all computers.
      * <p>
-     * The metadata file is the metadat file to be used to configure the
-     * processor. If null the default location will be used (relative to home):
+     * The metadata file is used to configure the processor. If null, the
+     * default location will be used (relative to home),
      * {@link #CONTAINER_FILE}.
      */
     public static void process(File home, File metadata, File[] files)
