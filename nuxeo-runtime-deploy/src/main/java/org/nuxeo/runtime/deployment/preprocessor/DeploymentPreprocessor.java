@@ -14,6 +14,7 @@
  * Contributors:
  *     Nuxeo - initial API and implementation
  *     bstefanescu, jcarsique
+ *     Anahide Tchertchian
  *
  * $Id$
  */
@@ -52,6 +53,9 @@ import org.nuxeo.runtime.deployment.preprocessor.template.TemplateContribution;
 import org.nuxeo.runtime.deployment.preprocessor.template.TemplateParser;
 
 /**
+ * Initializer for the deployment skeleton, taking care of creating templates,
+ * aggregating default components before runtime is started.
+ *
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
  */
 public class DeploymentPreprocessor {
@@ -116,7 +120,7 @@ public class DeploymentPreprocessor {
 
     protected void init(ContainerDescriptor cd) throws Exception {
         cd.context = new CommandContextImpl(cd.directory);
-        initSeamHotDeploy(cd.context);
+        initContextProperties(cd.context);
         // run container install instructions if any
         if (cd.install != null) {
             cd.install.setLogger(log);
@@ -137,17 +141,18 @@ public class DeploymentPreprocessor {
         }
     }
 
-    protected void initSeamHotDeploy(CommandContext ctx) throws IOException {
+    protected void initContextProperties(CommandContext ctx) throws IOException {
         ConfigurationGenerator confGen = new ConfigurationGenerator();
         // this init detects if seam debug mode should be set
         confGen.init();
         Properties props = confGen.getUserConfig();
-        String seamDebugPropValue = props.getProperty(
-                ConfigurationGenerator.SEAM_DEBUG_SYSTEM_PROP, "false");
-        boolean isSeamDebugSet = Boolean.TRUE.equals(Boolean.valueOf(seamDebugPropValue));
-        if (isSeamDebugSet) {
-            // not sure where it's used, but assume this is useful
-            ctx.put(ConfigurationGenerator.SEAM_DEBUG_SYSTEM_PROP, "true");
+        for (Map.Entry<Object, Object> prop : props.entrySet()) {
+            Object key = prop.getKey();
+            Object value = prop.getValue();
+            if (key instanceof String
+                    && (value != null && value instanceof String)) {
+                ctx.put((String) key, (String) value);
+            }
         }
     }
 
