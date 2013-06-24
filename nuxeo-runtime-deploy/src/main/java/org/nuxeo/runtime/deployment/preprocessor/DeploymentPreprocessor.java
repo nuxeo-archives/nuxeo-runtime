@@ -145,7 +145,9 @@ public class DeploymentPreprocessor {
         ConfigurationGenerator confGen = new ConfigurationGenerator();
         // this init detects if seam debug mode should be set
         confGen.init();
-        Properties props = confGen.getUserConfig();
+        Properties props = new Properties();
+        props.putAll(confGen.getUserConfig());
+        props.putAll(System.getProperties());
         for (Map.Entry<Object, Object> prop : props.entrySet()) {
             Object key = prop.getKey();
             Object value = prop.getValue();
