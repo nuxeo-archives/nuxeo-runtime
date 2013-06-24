@@ -37,16 +37,6 @@ public class TestFrameworkProperties extends NXRuntimeTestCase {
                 "<myProp>myDefaultValue</myProp>",
                 runtime.expandVars("<myProp>${myParam:=myDefaultValue}</myProp>"));
 
-        // define prop
-        runtime.getProperties().setProperty("myParam", "myValue");
-        assertEquals("<myProp>myValue</myProp>",
-                runtime.expandVars("<myProp>myValue</myProp>"));
-        assertEquals("<myProp>myValue</myProp>",
-                runtime.expandVars("<myProp>${myParam}</myProp>"));
-        assertEquals(
-                "<myProp>myValue</myProp>",
-                runtime.expandVars("<myProp>${myParam:=myDefaultValue}</myProp>"));
-
         // define system prop
         System.setProperty("myParam", "mySystemValue");
         assertEquals("<myProp>myValue</myProp>",
@@ -55,6 +45,16 @@ public class TestFrameworkProperties extends NXRuntimeTestCase {
                 runtime.expandVars("<myProp>${myParam}</myProp>"));
         assertEquals(
                 "<myProp>mySystemValue</myProp>",
+                runtime.expandVars("<myProp>${myParam:=myDefaultValue}</myProp>"));
+
+        // define prop
+        runtime.getProperties().setProperty("myParam", "myValue");
+        assertEquals("<myProp>myValue</myProp>",
+                runtime.expandVars("<myProp>myValue</myProp>"));
+        assertEquals("<myProp>myValue</myProp>",
+                runtime.expandVars("<myProp>${myParam}</myProp>"));
+        assertEquals(
+                "<myProp>myValue</myProp>",
                 runtime.expandVars("<myProp>${myParam:=myDefaultValue}</myProp>"));
     }
 
@@ -69,6 +69,16 @@ public class TestFrameworkProperties extends NXRuntimeTestCase {
                 "<myProp>myDefaultValue</myProp>",
                 runtime.expandVars("<myProp>${my.param:=myDefaultValue}</myProp>"));
 
+        // define system prop
+        System.setProperty("my.param", "mySystemValue");
+        assertEquals("<myProp>${\\my.strange/value}</myProp>",
+                runtime.expandVars("<myProp>${\\my.strange/value}</myProp>"));
+        assertEquals("<myProp>mySystemValue</myProp>",
+                runtime.expandVars("<myProp>${my.param}</myProp>"));
+        assertEquals(
+                "<myProp>mySystemValue</myProp>",
+                runtime.expandVars("<myProp>${my.param:=myDefaultValue}</myProp>"));
+
         // define prop
         runtime.getProperties().setProperty("my.param", "${\\my.strange/value}");
         assertEquals("<myProp>${\\my.strange/value}</myProp>",
@@ -79,15 +89,6 @@ public class TestFrameworkProperties extends NXRuntimeTestCase {
                 "<myProp>${\\my.strange/value}</myProp>",
                 runtime.expandVars("<myProp>${my.param:=myDefaultValue}</myProp>"));
 
-        // define system prop
-        System.setProperty("my.param", "mySystemValue");
-        assertEquals("<myProp>${\\my.strange/value}</myProp>",
-                runtime.expandVars("<myProp>${\\my.strange/value}</myProp>"));
-        assertEquals("<myProp>mySystemValue</myProp>",
-                runtime.expandVars("<myProp>${my.param}</myProp>"));
-        assertEquals(
-                "<myProp>mySystemValue</myProp>",
-                runtime.expandVars("<myProp>${my.param:=myDefaultValue}</myProp>"));
     }
 
 }

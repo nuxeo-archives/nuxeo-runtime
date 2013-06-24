@@ -281,7 +281,9 @@ public abstract class AbstractRuntimeService implements RuntimeService {
 
     @Override
     public String expandVars(String expression) {
-        return new TextTemplate(getProperties()).process(expression);
+        Properties props = new Properties(System.getProperties());
+        props.putAll(properties);
+        return new TextTemplate(props).process(expression);
     }
 
     @Override
