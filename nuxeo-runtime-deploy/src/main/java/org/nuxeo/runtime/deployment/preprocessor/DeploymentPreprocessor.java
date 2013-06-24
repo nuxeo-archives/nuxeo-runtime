@@ -143,18 +143,10 @@ public class DeploymentPreprocessor {
 
     protected void initContextProperties(CommandContext ctx) throws IOException {
         ConfigurationGenerator confGen = new ConfigurationGenerator();
-        // this init detects if seam debug mode should be set
         confGen.init();
-        Properties props = new Properties();
-        props.putAll(confGen.getUserConfig());
-        props.putAll(System.getProperties());
-        for (Map.Entry<Object, Object> prop : props.entrySet()) {
-            Object key = prop.getKey();
-            Object value = prop.getValue();
-            if (key instanceof String
-                    && (value != null && value instanceof String)) {
-                ctx.put((String) key, (String) value);
-            }
+        Properties props = confGen.getUserConfig();
+        for (String key : props.stringPropertyNames()) {
+            ctx.put(key, props.getProperty(key));
         }
     }
 
