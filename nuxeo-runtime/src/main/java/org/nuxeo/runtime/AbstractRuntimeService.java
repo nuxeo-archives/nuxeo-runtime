@@ -188,7 +188,11 @@ public abstract class AbstractRuntimeService implements RuntimeService {
 
     @Override
     public Properties getProperties() {
-        return properties;
+        // add system properties: regular properties are not initialized with
+        // default properties so add system properties instead
+        Properties props = new Properties(System.getProperties());
+        props.putAll(properties);
+        return props;
     }
 
     @Override
@@ -198,13 +202,7 @@ public abstract class AbstractRuntimeService implements RuntimeService {
 
     @Override
     public String getProperty(String name, String defValue) {
-        String value = properties.getProperty(name);
-        if (value == null) {
-            value = System.getProperty(name);
-            if (value == null) {
-                return defValue == null ? null : expandVars(defValue);
-            }
-        }
+        String value = getProperties().getProperty(name);
         return expandVars(value);
     }
 
@@ -278,10 +276,7 @@ public abstract class AbstractRuntimeService implements RuntimeService {
 
     @Override
     public String expandVars(String expression) {
-        Properties props = new Properties();
-        props.putAll(getProperties());
-        props.putAll(System.getProperties());
-        return new TextTemplate(props).process(expression);
+        return new TextTemplate(getProperties()).process(expression);
     }
 
     @Override

@@ -23,7 +23,6 @@ package org.nuxeo.runtime.deployment.preprocessor;
 
 import java.io.BufferedInputStream;
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -141,7 +140,7 @@ public class DeploymentPreprocessor {
         }
     }
 
-    protected void initContextProperties(CommandContext ctx) throws IOException {
+    protected void initContextProperties(CommandContext ctx) {
         ConfigurationGenerator confGen = new ConfigurationGenerator();
         confGen.init();
         Properties props = confGen.getUserConfig();
