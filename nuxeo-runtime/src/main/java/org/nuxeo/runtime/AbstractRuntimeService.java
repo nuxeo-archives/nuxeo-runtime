@@ -188,11 +188,9 @@ public abstract class AbstractRuntimeService implements RuntimeService {
 
     @Override
     public Properties getProperties() {
-        // add system properties: regular properties are not initialized with
-        // default properties so add system properties instead
-        Properties props = new Properties(System.getProperties());
-        props.putAll(properties);
-        return props;
+        // do not unreference properties: some methods rely on this to set
+        // variables here...
+        return properties;
     }
 
     @Override
@@ -202,7 +200,14 @@ public abstract class AbstractRuntimeService implements RuntimeService {
 
     @Override
     public String getProperty(String name, String defValue) {
-        String value = getProperties().getProperty(name);
+        Properties props = new Properties(System.getProperties());
+        props.putAll(properties);
+        String value = props.getProperty(name, defValue);
+        if (value != null && value.startsWith("$")
+                && value.equals("${" + name + "}")) {
+            // avoid loop, don't expand
+            return value;
+        }
         return expandVars(value);
     }
 
