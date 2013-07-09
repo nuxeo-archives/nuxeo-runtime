@@ -221,7 +221,11 @@ public class LoginComponent extends DefaultComponent implements LoginService {
     }
 
     public static boolean isSystemLogin(Object principal) {
-        if (principal != null && principal.getClass() == SystemID.class) {
+        if (principal == null) {
+            return false;
+        }
+        Class<?> clazz = principal.getClass();
+        if (SystemID.class.isAssignableFrom(clazz)) {
             if (!systemLoginManager.isRemoteSystemLoginRestricted()) {
                 return true;
             } else {
