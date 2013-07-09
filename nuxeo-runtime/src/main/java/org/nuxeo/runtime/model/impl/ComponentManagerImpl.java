@@ -29,7 +29,7 @@ import org.nuxeo.common.collections.ListenerList;
 import org.nuxeo.runtime.ComponentEvent;
 import org.nuxeo.runtime.ComponentListener;
 import org.nuxeo.runtime.RuntimeService;
-import org.nuxeo.runtime.api.Framework;
+import org.nuxeo.runtime.model.RuntimeModelException;
 import org.nuxeo.runtime.model.ComponentInstance;
 import org.nuxeo.runtime.model.ComponentManager;
 import org.nuxeo.runtime.model.ComponentName;
@@ -46,7 +46,7 @@ public class ComponentManagerImpl implements ComponentManager {
 
     // must use an ordered Set to avoid loosing the order of the pending
     // extensions
-    protected final Map<ComponentName, Set<Extension>> pendingExtensions;
+    protected final Map<ComponentName, Set<Extension>> extensionPendingsByComponent;
 
     private ListenerList listeners;
 
@@ -57,8 +57,8 @@ public class ComponentManagerImpl implements ComponentManager {
     protected ComponentRegistry reg;
 
     public ComponentManagerImpl(RuntimeService runtime) {
-        reg = new ComponentRegistry();
-        pendingExtensions = new HashMap<ComponentName, Set<Extension>>();
+        reg = new ComponentRegistry(this);
+        extensionPendingsByComponent = new HashMap<ComponentName, Set<Extension>>();
         listeners = new ListenerList();
         services = new ConcurrentHashMap<String, RegistrationInfoImpl>();
         blacklist = new HashSet<String>();
@@ -70,23 +70,15 @@ public class ComponentManagerImpl implements ComponentManager {
     }
 
     @Override
-    public synchronized Map<ComponentName, Set<ComponentName>> getPendingRegistrations() {
-        // TODO the set value is not cloned
-        return new HashMap<ComponentName, Set<ComponentName>>(
-                reg.getPendingComponents());
+    public synchronized Map<ComponentName, Set<RegistrationInfo>> getPendingRegistrations() {
+        return reg.requiredPendings.map;
     }
 
-    public synchronized Collection<ComponentName> getNeededRegistrations() {
-        return pendingExtensions.keySet();
-    }
 
-    public synchronized Collection<Extension> getPendingExtensions(
-            ComponentName name) {
-        return pendingExtensions.get(name);
-    }
 
     @Override
-    public synchronized RegistrationInfo getRegistrationInfo(ComponentName name) {
+    public synchronized RegistrationInfoImpl getRegistrationInfo(
+            ComponentName name) {
         return reg.getComponent(name);
     }
 
@@ -101,8 +93,8 @@ public class ComponentManagerImpl implements ComponentManager {
     }
 
     @Override
-    public synchronized ComponentInstance getComponent(ComponentName name) {
-        RegistrationInfo ri = reg.getComponent(name);
+    public synchronized ComponentInstanceImpl getComponent(ComponentName name) {
+        RegistrationInfoImpl ri = reg.getComponent(name);
         return ri != null ? ri.getComponent() : null;
     }
 
@@ -129,7 +121,7 @@ public class ComponentManagerImpl implements ComponentManager {
     }
 
     @Override
-    public synchronized void register(RegistrationInfo regInfo) {
+    public synchronized void register(RegistrationInfo regInfo) throws RuntimeModelException {
         RegistrationInfoImpl ri = (RegistrationInfoImpl) regInfo;
         ComponentName name = ri.getName();
         if (blacklist.contains(name.getName())) {
@@ -138,45 +130,22 @@ public class ComponentManagerImpl implements ComponentManager {
             return;
         }
         if (reg.contains(name)) {
-            if (name.getName().startsWith("org.nuxeo.runtime.")) {
-                // XXX we hide the fact that nuxeo-runtime bundles are
-                // registered twice
-                // TODO fix the root cause and remove this
-                return;
-            }
-            String msg = "Duplicate component name: " + name;
-            log.error(msg);
-            Framework.getRuntime().getWarnings().add(msg);
-            return;
-            // throw new
-            // IllegalStateException("Component was already registered: " +
-            // name);
+            throw new RuntimeModelException(this + " : Duplicate component name " + name);
         }
         for (ComponentName n : ri.getAliases()) {
             if (reg.contains(n)) {
-                String msg = "Duplicate component name: " + n + " (alias for "
-                        + name + ")";
-                log.error(msg);
-                Framework.getRuntime().getWarnings().add(msg);
-                return;
+                throw new RuntimeModelException(this + " : Duplicate component name " +  n + " (alias for "
+                        + name + ")");
             }
         }
 
         ri.attach(this);
 
-        try {
-            log.info("Registering component: " + name);
-            if (!reg.addComponent(ri)) {
-                log.info("Registration delayed for component: " + name
-                        + ". Waiting for: "
-                        + reg.getMissingDependencies(ri.getName()));
-            }
-        } catch (Throwable e) {
-            String msg = "Failed to register component: " + name;
-            log.error(msg, e);
-            msg += " (" + e.toString() + ')';
-            Framework.getRuntime().getWarnings().add(msg);
-            return;
+        log.info("Registering component: " + name);
+        if (!reg.addComponent(ri)) {
+            log.info("Registration delayed for component: " + name
+                    + ". Waiting for: "
+                    + reg.getMissingDependencies(ri.getName()));
         }
     }
 
@@ -208,27 +177,15 @@ public class ComponentManagerImpl implements ComponentManager {
     @Override
     public ComponentInstance getComponentProvidingService(
             Class<?> serviceClass) {
-        RegistrationInfoImpl ri = services.get(serviceClass.getName());
-        if (ri != null && ri.isActivated()) {
-            return ri.getComponent();
-        }
-        synchronized(this) {
-	    if (ri != null && !ri.isActivated()) {
-		if (ri.isResolved()) {
-		    try {
-			ri.activate();
-			return ri.getComponent();
-		    } catch (Exception e) {
-			log.error("Failed to get service: " + serviceClass + ", " + e.getMessage());
-		    }
-		} else {
-		    // Hack to avoid messages during TypeService activation
-		    if (!serviceClass.getSimpleName().equals("TypeProvider")) {
-			log.debug("The component exposing the service "
-				  + serviceClass + " is not resolved");
-		    }
-		}
-	    }
+        try {
+            RegistrationInfoImpl ri = services.get(serviceClass.getName());
+            if (ri != null) {
+                if (ri.lazyActivate()) {
+                    return ri.getComponent();
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to get service: " + serviceClass);
         }
         return null;
     }
@@ -254,16 +211,24 @@ public class ComponentManagerImpl implements ComponentManager {
         return activating;
     }
 
-    void sendEvent(ComponentEvent event) {
-        log.debug("Dispatching event: " + event);
-        Object[] listeners = this.listeners.getListeners();
-        for (Object listener : listeners) {
-            ((ComponentListener) listener).handleEvent(event);
+    void sendEvent(ComponentEvent event) throws RuntimeModelException {
+        if (log.isDebugEnabled()) {
+            log.debug("Dispatching event: " + event);
         }
+        Object[] listeners = this.listeners.getListeners();
+        RuntimeModelException.CompoundBuilder errors = new RuntimeModelException.CompoundBuilder();
+        for (Object listener : listeners) {
+            try {
+                ((ComponentListener) listener).handleEvent(event);
+            } catch (RuntimeModelException e) {
+                errors.add(e);
+            }
+        }
+        errors.throwOnError();
     }
 
     public synchronized void registerExtension(Extension extension)
-            throws Exception {
+            throws RuntimeModelException {
         ComponentName name = extension.getTargetComponent();
         RegistrationInfoImpl ri = reg.getComponent(name);
         if (ri != null && ri.component != null) {
@@ -271,7 +236,11 @@ public class ComponentManagerImpl implements ComponentManager {
                 log.debug("Register contributed extension: " + extension);
             }
             loadContributions(ri, extension);
-            ri.component.registerExtension(extension);
+            try {
+                ri.component.registerExtension(extension);
+            } catch (Exception e) {
+                throw new RuntimeModelException(ri + " : cannot register " + extension, e);
+            }
             sendEvent(new ComponentEvent(ComponentEvent.EXTENSION_REGISTERED,
                     ((ComponentInstanceImpl) extension.getComponent()).ri,
                     extension));
@@ -280,13 +249,13 @@ public class ComponentManagerImpl implements ComponentManager {
                 log.debug("Enqueue contributed extension to pending queue: "
                         + extension);
             }
-            Set<Extension> extensions = pendingExtensions.get(name);
+            Set<Extension> extensions = extensionPendingsByComponent.get(name);
             if (extensions == null) {
                 extensions = new LinkedHashSet<Extension>(); // must keep order
                                                              // in which
                                                              // extensions are
                                                              // contributed
-                pendingExtensions.put(name, extensions);
+                extensionPendingsByComponent.put(name, extensions);
             }
             extensions.add(extension);
             sendEvent(new ComponentEvent(ComponentEvent.EXTENSION_PENDING,
@@ -296,7 +265,7 @@ public class ComponentManagerImpl implements ComponentManager {
     }
 
     public synchronized void unregisterExtension(Extension extension)
-            throws Exception {
+            throws RuntimeModelException {
         // TODO check if framework is shutting down and in that case do nothing
         if (log.isDebugEnabled()) {
             log.debug("Unregister contributed extension: " + extension);
@@ -306,15 +275,19 @@ public class ComponentManagerImpl implements ComponentManager {
         if (ri != null) {
             ComponentInstance co = ri.getComponent();
             if (co != null) {
-                co.unregisterExtension(extension);
+                try {
+                    co.unregisterExtension(extension);
+                } catch (Exception e) {
+                    throw new RuntimeModelException(ri + " : cannot unregister " + extension, e);
+                }
             }
         } else { // maybe it's pending
-            Set<Extension> extensions = pendingExtensions.get(name);
+            Set<Extension> extensions = extensionPendingsByComponent.get(name);
             if (extensions != null) {
                 // FIXME: extensions is a set of Extensions, not ComponentNames.
                 extensions.remove(name);
                 if (extensions.isEmpty()) {
-                    pendingExtensions.remove(name);
+                    extensionPendingsByComponent.remove(name);
                 }
             }
         }
@@ -325,13 +298,16 @@ public class ComponentManagerImpl implements ComponentManager {
 
     public static void loadContributions(RegistrationInfoImpl ri, Extension xt) {
         ExtensionPointImpl xp = ri.getExtensionPoint(xt.getExtensionPoint());
-        if (xp != null && xp.contributions != null) {
-            try {
-                Object[] contribs = xp.loadContributions(ri, xt);
-                xt.setContributions(contribs);
-            } catch (Exception e) {
-                log.error("Failed to create contribution objects", e);
-            }
+        if (xp == null) {
+            throw new IllegalStateException(
+                    "Cannot load contributions, extension point not registered ("
+                            + xt + ")");
+        }
+        try {
+            Object[] contribs = xp.loadContributions(ri, xt);
+            xt.setContributions(contribs);
+        } catch (Exception e) {
+            log.error("Failed to create contribution objects", e);
         }
     }
 

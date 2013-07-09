@@ -25,6 +25,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Dictionary;
+import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -32,7 +35,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
-import java.util.StringTokenizer;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.commons.logging.Log;
@@ -40,12 +42,15 @@ import org.apache.commons.logging.LogFactory;
 import org.nuxeo.common.Environment;
 import org.nuxeo.common.utils.FileUtils;
 import org.nuxeo.common.utils.TextTemplate;
-import org.nuxeo.runtime.AbstractRuntimeService;
+import org.nuxeo.common.utils.Vars;
 import org.nuxeo.runtime.Version;
 import org.nuxeo.runtime.api.Framework;
+import org.nuxeo.runtime.model.RuntimeModelException;
 import org.nuxeo.runtime.model.ComponentName;
 import org.nuxeo.runtime.model.RegistrationInfo;
 import org.nuxeo.runtime.model.RuntimeContext;
+import org.nuxeo.runtime.model.impl.AbstractRuntimeContext;
+import org.nuxeo.runtime.model.impl.AbstractRuntimeService;
 import org.nuxeo.runtime.model.impl.ComponentPersistence;
 import org.nuxeo.runtime.model.impl.RegistrationInfoImpl;
 import org.osgi.framework.Bundle;
@@ -53,6 +58,8 @@ import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
 import org.osgi.framework.FrameworkEvent;
 import org.osgi.framework.FrameworkListener;
+
+import sun.misc.CompoundEnumeration;
 
 /**
  * The default implementation of NXRuntime over an OSGi compatible environment.
@@ -84,33 +91,47 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
 
     public static final Version VERSION = Version.parseString("1.4.0");
 
-    private static final Log log = LogFactory.getLog(OSGiRuntimeService.class);
+    private final Log log = LogFactory.getLog(OSGiRuntimeService.class);
 
-    private final BundleContext bundleContext;
+    protected final BundleContext bundleContext;
 
-    private final Map<String, RuntimeContext> contexts;
+    protected boolean appStarted = false;
 
-    private boolean appStarted = false;
+    protected final OSGiComponentLoader componentLoader = new OSGiComponentLoader(
+            this);
 
     /**
      * OSGi doesn't provide a method to lookup bundles by symbolic name. This
      * table is used to map symbolic names to bundles. This map is not handling
      * bundle versions.
      */
-    final Map<String, Bundle> bundles;
+    protected final Map<String, Bundle> bundlesByName = new ConcurrentHashMap<String, Bundle>();
 
-    final ComponentPersistence persistence;
+    protected final ComponentPersistence persistence;
 
-    public OSGiRuntimeService(BundleContext context) {
-        this(new OSGiRuntimeContext(context.getBundle()), context);
+    protected static Map<String, String> toMap(Dictionary<?, ?> dict) {
+        if (dict == null) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> map = new HashMap<String, String>();
+        Enumeration<?> keys = dict.keys();
+        while (keys.hasMoreElements()) {
+            Object key = keys.nextElement();
+            map.put(key.toString(), dict.get(key).toString());
+        }
+        return map;
+    }
+
+    public OSGiRuntimeService(BundleContext context,
+            Dictionary<String, ?> config) {
+        this(new OSGiRuntimeContext(context.getBundle()), context,
+                toMap(config));
     }
 
     public OSGiRuntimeService(OSGiRuntimeContext runtimeContext,
-            BundleContext context) {
-        super(runtimeContext);
+            BundleContext context, Map<String, String> props) {
+        super(runtimeContext, props);
         bundleContext = context;
-        bundles = new ConcurrentHashMap<String, Bundle>();
-        contexts = new ConcurrentHashMap<String, RuntimeContext>();
         String bindAddress = context.getProperty(PROP_NUXEO_BIND_ADDRESS);
         if (bindAddress != null) {
             properties.put(PROP_NUXEO_BIND_ADDRESS, bindAddress);
@@ -149,105 +170,102 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
 
     @Override
     public Bundle getBundle(String symbolicName) {
-        return bundles.get(symbolicName);
+        return bundlesByName.get(symbolicName);
     }
 
     public Map<String, Bundle> getBundlesMap() {
-        return bundles;
+        return bundlesByName;
     }
 
     public ComponentPersistence getComponentPersistence() {
         return persistence;
     }
 
-    public synchronized RuntimeContext createContext(Bundle bundle)
-            throws Exception {
-        RuntimeContext ctx = contexts.get(bundle.getSymbolicName());
-        if (ctx == null) {
-            // workaround to handle fragment bundles
+    public synchronized RuntimeContext createContext(Bundle bundle) throws RuntimeModelException {
+        OSGiRuntimeContext ctx;
+        if (bundle.equals(runtimeContext.getBundle())) {
+            ctx = (OSGiRuntimeContext) runtimeContext;
+        } else {
             ctx = new OSGiRuntimeContext(bundle);
-            contexts.put(bundle.getSymbolicName(), ctx);
-            loadComponents(bundle, ctx);
+        }
+        contextsByName.put(bundle.getSymbolicName(), ctx);
+        ctx.setRegistered(this);
+        if (ctx.isResolved() && (bundle.getState() & Bundle.ACTIVE) != 0) {
+            try {
+                ctx.setActivated();
+            } catch (Exception e) {
+                throw new IllegalStateException("Cannot activate " + bundle, e);
+            }
         }
         return ctx;
     }
 
+    public synchronized void activateContext(Bundle bundle) throws Exception {
+        String symbolicName = bundle.getSymbolicName();
+        if (!contextsByName.containsKey(symbolicName)) {
+            throw new IllegalStateException(
+                    "Trying to activate missing bundle context, check deps ("
+                            + symbolicName + ")");
+        }
+        OSGiRuntimeContext context = getContext(bundle);
+        if (!context.isResolved()) {
+            for (AbstractRuntimeContext req:context.getRequiredPendingContexts()) {
+                if (!req.isResolved()) {
+                    continue;
+                }
+                if ((req.getBundle().getState() & (Bundle.STARTING|Bundle.ACTIVE)) == 0) {
+                    req.getBundle().start();
+                }
+                if (!req.isActivated()) {
+                    req.setActivated();
+                }
+            }
+        }
+        context.setActivated();
+    }
+
     public synchronized void destroyContext(Bundle bundle) {
-        RuntimeContext ctx = contexts.remove(bundle.getSymbolicName());
+        RuntimeContext ctx = contextsByName.remove(bundle.getSymbolicName());
         if (ctx != null) {
             ctx.destroy();
         }
     }
 
-    public synchronized RuntimeContext getContext(Bundle bundle) {
-        return contexts.get(bundle.getSymbolicName());
+    public synchronized OSGiRuntimeContext getContext(Bundle bundle) {
+        return (OSGiRuntimeContext)contextsByName.get(bundle.getSymbolicName());
     }
 
-    public synchronized RuntimeContext getContext(String symbolicName) {
-        return contexts.get(symbolicName);
+    @Override
+    public synchronized OSGiRuntimeContext getContext(String symbolicName) {
+        Bundle bundle = getBundle(symbolicName);
+        bundle = findHostBundle(bundle);
+        return (OSGiRuntimeContext)contextsByName.get(symbolicName);
     }
 
     @Override
     protected void doStart() throws Exception {
+        super.doStart();
         bundleContext.addFrameworkListener(this);
+        componentLoader.start();
         loadConfig(); // load configuration if any
-        loadComponents(bundleContext.getBundle(), context);
     }
 
     @Override
     protected void doStop() throws Exception {
         bundleContext.removeFrameworkListener(this);
-        for (Bundle eachBundle:bundleContext.getBundles()) {
-           eachBundle.uninstall();
-        }
+        componentLoader.stop();
         super.doStop();
-        context.destroy();
-    }
-
-    protected void loadComponents(Bundle bundle, RuntimeContext ctx)
-            throws Exception {
-        String list = getComponentsList(bundle);
-        String name = bundle.getSymbolicName();
-        log.debug("Bundle: " + name + " components: " + list);
-        if (list == null) {
-            return;
-        }
-        StringTokenizer tok = new StringTokenizer(list, ", \t\n\r\f");
-        while (tok.hasMoreTokens()) {
-            String path = tok.nextToken();
-            URL url = bundle.getEntry(path);
-            log.debug("Loading component for: " + name + " path: " + path
-                    + " url: " + url);
-            if (url != null) {
-                try {
-                    ctx.deploy(url);
-                } catch (Exception e) {
-                    // just log error to know where is the cause of the
-                    // exception
-                    log.error("Error deploying resource: " + url);
-                    Framework.handleDevError(e);
-                    throw e;
-                }
-            } else {
-                String message = "Unknown component '" + path
-                        + "' referenced by bundle '" + name + "'";
-                log.error(message + ". Check the MANIFEST.MF");
-                Framework.handleDevError(null);
-                warnings.add(message);
-            }
-        }
+        runtimeContext.destroy();
     }
 
     public static String getComponentsList(Bundle bundle) {
-        return (String) bundle.getHeaders().get("Nuxeo-Component");
+        return bundle.getHeaders().get("Nuxeo-Component");
     }
 
-    protected boolean loadConfigurationFromProvider() throws Exception {
+    protected void loadConfigurationFromProvider(boolean isJBoss4,
+            RuntimeContext context, Iterable<URL> provider) throws Exception {
         // TODO use a OSGi service for this.
-        Iterable<URL> provider = Environment.getDefault().getConfigurationProvider();
-        if (provider == null) {
-            return false;
-        }
+
         Iterator<URL> it = provider.iterator();
         ArrayList<URL> props = new ArrayList<URL>();
         ArrayList<URL> xmls = new ArrayList<URL>();
@@ -270,10 +288,19 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
         for (URL url : props) {
             loadProperties(url);
         }
+        // TODO: in JBoss there is a deployer that will deploy nuxeo
+        // configuration files ..
         for (URL url : xmls) {
-            context.deploy(url);
+            if (!isJBoss4) {
+                log.debug("Configuration: deploy config component: " + url);
+                try {
+                    context.deploy(url);
+                } catch (Exception e) {
+                    throw new IllegalArgumentException(
+                            "Cannot load config from " + url, e);
+                }
+            }
         }
-        return true;
     }
 
     protected void loadConfig() throws Exception {
@@ -299,13 +326,9 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
             manager.setBlacklist(new HashSet<String>(lines));
         }
 
-        if (loadConfigurationFromProvider()) {
-            return;
-        }
-
         String configDir = bundleContext.getProperty(PROP_CONFIG_DIR);
         if (configDir != null && configDir.contains(":/")) { // an url of a
-                                                             // config file
+            // config file
             log.debug("Configuration: " + configDir);
             URL url = new URL(configDir);
             log.debug("Configuration:   loading properties url: " + configDir);
@@ -313,52 +336,24 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
             return;
         }
 
-        // TODO: in JBoss there is a deployer that will deploy nuxeo
-        // configuration files ..
-        boolean isNotJBoss4 = !isJBoss4(env);
+        Iterable<URL> provider = Environment.getDefault().getConfigurationProvider();
+        RuntimeContext context = null;
 
         File dir = env.getConfig();
-        // File dir = new File(configDir);
-        String[] names = dir.list();
-        if (names != null) {
-            Arrays.sort(names, new Comparator<String>() {
-                @Override
-                public int compare(String o1, String o2) {
-                    return o1.compareToIgnoreCase(o2);
-                }
-            });
-            printDeploymentOrderInfo(names);
-            for (String name : names) {
-                if (name.endsWith("-config.xml")
-                        || name.endsWith("-bundle.xml")) {
-                    // TODO
-                    // because of some dep bugs (regarding the deployment of
-                    // demo-ds.xml)
-                    // we cannot let the runtime deploy config dir at
-                    // beginning...
-                    // until fixing this we deploy config dir from
-                    // NuxeoDeployer
-                    if (isNotJBoss4) {
-                        File file = new File(dir, name);
-                        log.debug("Configuration: deploy config component: "
-                                + name);
-                        try {
-                            context.deploy(file.toURI().toURL());
-                        } catch (Exception e) {
-                            throw new IllegalArgumentException(
-                                    "Cannot load config from " + file, e);
-                        }
-                    }
-                } else if (name.endsWith(".config") || name.endsWith(".ini")
-                        || name.endsWith(".properties")) {
-                    File file = new File(dir, name);
-                    log.debug("Configuration: loading properties: " + name);
-                    loadProperties(file);
-                } else {
-                    log.debug("Configuration: ignoring: " + name);
-                }
+        if (dir.isDirectory()) {
+            Bundle config = bundleContext.installBundle(dir.getPath());
+            context = contextsByName.get(config.getSymbolicName());
+            if (provider == null) {
+                provider = new BundleConfigurationProvider(config);
             }
-        } else if (dir.isFile()) { // a file - load it
+        }
+
+        if (provider != null) {
+            loadConfigurationFromProvider(isJBoss4(env), context, provider);
+            return;
+        }
+
+        if (dir.isFile()) { // a file - load it
             log.debug("Configuration: loading properties: " + dir);
             loadProperties(dir);
         } else {
@@ -368,7 +363,7 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
         loadDefaultConfig();
     }
 
-    protected static void printDeploymentOrderInfo(String[] fileNames) {
+    protected void printDeploymentOrderInfo(String[] fileNames) {
         if (log.isDebugEnabled()) {
             StringBuilder buf = new StringBuilder();
             for (String fileName : fileNames) {
@@ -446,7 +441,8 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
         Properties props = new Properties();
         props.load(in);
         for (Entry<Object, Object> prop : props.entrySet()) {
-            properties.put(prop.getKey().toString(), prop.getValue().toString());
+            properties.put(prop.getKey().toString(),
+                    Vars.expand(prop.getValue().toString(), properties));
         }
     }
 
@@ -502,6 +498,58 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
         }
     }
 
+    protected static class CompoundEnumerationBuilder {
+
+        protected final ArrayList<Enumeration<URL>> collected = new ArrayList<Enumeration<URL>>();
+
+        public CompoundEnumerationBuilder add(Enumeration<URL> e) {
+            collected.add(e);
+            return this;
+        }
+
+        public Enumeration<URL> build() {
+            return new CompoundEnumeration<URL>(
+                    collected.toArray(new Enumeration[collected.size()]));
+        }
+
+    }
+
+    protected static class BundleConfigurationProvider implements Iterable<URL> {
+        protected final Bundle bundle;
+
+        protected BundleConfigurationProvider(Bundle bundle) {
+            this.bundle = bundle;
+        }
+
+        @Override
+        public Iterator<URL> iterator() {
+            CompoundEnumerationBuilder builder = new CompoundEnumerationBuilder();
+            builder.add(bundle.findEntries("/", "*.properties", true));
+            builder.add(bundle.findEntries("/", "*-config.xml", true));
+            builder.add(bundle.findEntries("/", "*-bundle.xml", true));
+            final Enumeration<URL> entries = builder.build();
+            return new Iterator<URL>() {
+
+                @Override
+                public boolean hasNext() {
+                    return entries.hasMoreElements();
+                }
+
+                @Override
+                public URL next() {
+                    return entries.nextElement();
+                }
+
+                @Override
+                public void remove() {
+                    throw new UnsupportedOperationException();
+                }
+
+            };
+
+        }
+    }
+
     protected static class RIApplicationStartedComparator implements
             Comparator<RegistrationInfo> {
         @Override
@@ -516,23 +564,29 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
         }
     }
 
-    public void fireApplicationStarted() {
+    public void fireApplicationStarted() throws RuntimeModelException {
         synchronized (this) {
             if (appStarted) {
                 return;
             }
             appStarted = true;
         }
+        RuntimeModelException.CompoundBuilder errors = new RuntimeModelException.CompoundBuilder();
         try {
             persistence.loadPersistedComponents();
-        } catch (Exception e) {
-            log.error("Failed to load persisted components", e);
+        } catch (RuntimeModelException e) {
+            errors.add(e);
         }
         // deploy a fake component that is marking the end of startup
         // XML components that needs to be deployed at the end need to put a
         // requirement
         // on this marker component
-        deployFrameworkStartedComponent();
+        try {
+            deployFrameworkStartedComponent();
+        } catch (RuntimeModelException e) {
+            errors.add(e);
+        }
+        errors.throwOnError();
         notifyComponentsOnStarted();
         // print the startup message
         printStatusMessage();
@@ -543,7 +597,11 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
     @Override
     public void frameworkEvent(FrameworkEvent event) {
         if (event.getType() == FrameworkEvent.STARTED) {
-            fireApplicationStarted();
+            try {
+                fireApplicationStarted();
+            } catch (RuntimeModelException e) {
+                Framework.handleDevError(e);
+            }
         }
     }
 
@@ -557,35 +615,27 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
         }
     }
 
-    protected void deployFrameworkStartedComponent() {
+    protected void deployFrameworkStartedComponent() throws RuntimeModelException {
         RegistrationInfoImpl ri = new RegistrationInfoImpl(
                 FRAMEWORK_STARTED_COMP);
-        ri.setContext(context);
+        ri.setContext(runtimeContext);
         // this will register any pending components that waits for the
         // framework to be started
         manager.register(ri);
     }
 
     public Bundle findHostBundle(Bundle bundle) {
-        String hostId = (String) bundle.getHeaders().get(
-                Constants.FRAGMENT_HOST);
+        String hostId = bundle.getHeaders().get(Constants.FRAGMENT_HOST);
         log.debug("Looking for host bundle: " + bundle.getSymbolicName()
                 + " host id: " + hostId);
-        if (hostId != null) {
-            int p = hostId.indexOf(';');
-            if (p > -1) { // remove version or other extra information if any
-                hostId = hostId.substring(0, p);
-            }
-            RuntimeContext ctx = contexts.get(hostId);
-            if (ctx != null) {
-                log.debug("Context was found for host id: " + hostId);
-                return ctx.getBundle();
-            } else {
-                log.warn("No context found for host id: " + hostId);
-
-            }
+        if (hostId == null) {
+            return bundle;
         }
-        return null;
+        int p = hostId.indexOf(';');
+        if (p > -1) { // remove version or other extra information if any
+            hostId = hostId.substring(0, p);
+        }
+        return bundlesByName.get(hostId);
     }
 
     protected File getEclipseBundleFileUsingReflection(Bundle bundle) {
@@ -661,6 +711,15 @@ public class OSGiRuntimeService extends AbstractRuntimeService implements
             return false;
         }
         return "JBoss".equals(hn) && hv.startsWith("4");
+    }
+
+    protected void addWarning(String message) {
+        warnings.add(message);
+    }
+
+    public void installBundle(Bundle bundle) throws RuntimeModelException {
+        bundlesByName.put(bundle.getSymbolicName(), bundle);
+        createContext(bundle);
     }
 
 }

@@ -19,7 +19,6 @@
 package org.nuxeo.runtime.test.runner;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.Collection;
 import java.util.HashMap;
@@ -31,12 +30,9 @@ import java.util.Set;
 import javax.naming.InitialContext;
 import javax.sql.DataSource;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.nuxeo.common.utils.URLStreamHandlerFactoryInstaller;
+import org.nuxeo.runtime.RuntimeService;
 import org.nuxeo.runtime.api.DataSourceHelper;
-import org.nuxeo.runtime.api.Framework;
-import org.nuxeo.runtime.test.NXRuntimeTestCase;
+import org.nuxeo.runtime.test.RuntimeHarness;
 import org.osgi.framework.Bundle;
 
 import com.google.common.base.Supplier;
@@ -47,23 +43,21 @@ import com.google.inject.Binder;
 /**
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
  */
+@Deploy({"org.nuxeo.runtime", "org.nuxeo.runtime.test"})
 public class RuntimeFeature extends SimpleFeature {
 
-    private static final Log log = LogFactory.getLog(RuntimeFeature.class);
+    protected DefaultRuntimeHarness harness;
 
-    protected RuntimeHarness harness;
-
-    protected final DeploymentSet deploy;
+    protected DeploymentSet deploy;
 
     /**
      * Providers contributed by other features to override the default service
      * provider used for a nuxeo service.
      */
-    protected final Map<Class<?>, ServiceProvider<?>> serviceProviders;
+    protected Map<Class<?>, ServiceProvider<?>> serviceProviders;
 
     public RuntimeFeature() {
-        deploy = new DeploymentSet();
-        serviceProviders = new HashMap<Class<?>, ServiceProvider<?>>();
+
     }
 
     public <T> void addServiceProvider(ServiceProvider<T> provider) {
@@ -74,10 +68,6 @@ public class RuntimeFeature extends SimpleFeature {
         return harness;
     }
 
-    public DeploymentSet deployments() {
-        return deploy;
-    }
-
     private void scanDeployments(FeaturesRunner runner) {
         List<RunnerFeature> features = runner.getFeatures();
         if (features == null) {
@@ -85,10 +75,10 @@ public class RuntimeFeature extends SimpleFeature {
                     "Cannot call scanDeployments until features are not loaded");
         }
         for (RunnerFeature feature : features) {
-            deploy.load(FeaturesRunner.getScanner(), feature.getClass());
+            deploy.load(runner.getScanner(), feature.getClass());
         }
         // load deployments from class to run
-        deploy.load(FeaturesRunner.getScanner(),
+        deploy.load(runner.getScanner(),
                 runner.getTestClass().getJavaClass());
     }
 
@@ -161,13 +151,10 @@ public class RuntimeFeature extends SimpleFeature {
                 }
                 // deploy local contribs
                 for (String resource : localIndex.removeAll(name)) {
-                    URL url = runner.getTargetTestResource(name);
+                    URL url = runner.getTargetTestClass().getClassLoader().getResource(
+                            resource);
                     if (url == null) {
                         url = bundle.getEntry(resource);
-                    }
-                    if (url == null) {
-                        url = runner.getTargetTestClass().getClassLoader().getResource(
-                                resource);
                     }
                     if (url == null) {
                         throw new AssertionError("Cannot find " + resource
@@ -195,7 +182,16 @@ public class RuntimeFeature extends SimpleFeature {
                 errors.addSuppressed(error);
             }
         }
-
+        for (String name : bundles) {
+            Bundle bundle = null;
+            try {
+                harness.deployBundle(name);
+                bundle = harness.getOSGiAdapter().getBundle(name);
+            } catch (Exception error) {
+                errors.addSuppressed(error);
+                continue;
+            }
+        }
         if (errors.getSuppressed().length > 0) {
             throw errors;
         }
@@ -203,17 +199,11 @@ public class RuntimeFeature extends SimpleFeature {
 
     @Override
     public void initialize(FeaturesRunner runner) throws Exception {
-        harness = new NXRuntimeTestCase(runner.getTargetTestClass());
+        harness = new DefaultRuntimeHarness();
+        deploy = new DeploymentSet();
+        serviceProviders = new HashMap<Class<?>, ServiceProvider<?>>();
         scanDeployments(runner);
-    }
-
-    @Override
-    public void start(FeaturesRunner runner) throws Exception {
-        // Starts Nuxeo Runtime
-        if (!harness.isStarted()) {
-            harness.start();
-        }
-        // Deploy bundles
+        harness.start();
         deployTestClassBundles(runner);
     }
 
@@ -224,30 +214,10 @@ public class RuntimeFeature extends SimpleFeature {
 
     @Override
     public void stop(FeaturesRunner runner) throws Exception {
-        try {
-            // Stops the harness if needed
-            if (harness.isStarted()) {
-                // TODO NXP-10915 should undeploy test class bundles
-                harness.stop();
-                // harness = null;
-            }
-        } finally {
-            cleanupClassLoader();
-        }
-    }
-
-    protected void cleanupClassLoader() {
-        URLStreamHandlerFactoryInstaller.resetURLStreamHandlers();
-    }
-
-    protected void resetStaticField(Class<?> clazz, String name) {
-        try {
-            Field f = clazz.getDeclaredField(name);
-            f.setAccessible(true);
-            f.set(null, null);
-        } catch (NoSuchFieldException | SecurityException
-                | IllegalArgumentException | IllegalAccessException e) {
-            log.error("Cannot reset field " + clazz.getName() + "." + name, e);
+        // Stops the harness if needed
+        if (harness.isStarted()) {
+            // TODO NXP-10915 should undeploy test class bundles
+            harness.stop();
         }
     }
 
@@ -256,7 +226,7 @@ public class RuntimeFeature extends SimpleFeature {
     @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public void configure(FeaturesRunner runner, Binder binder) {
-        for (String svc : Framework.getRuntime().getComponentManager().getServices()) {
+        for (String svc : harness.runtime.getComponentManager().getServices()) {
             try {
                 Class clazz = Thread.currentThread().getContextClassLoader().loadClass(
                         svc);
@@ -269,9 +239,8 @@ public class RuntimeFeature extends SimpleFeature {
                 throw new RuntimeException("Failed to bind service: " + svc, e);
             }
         }
-        binder.bind(RuntimeHarness.class).toInstance(getHarness());
-        // binder.bind(FeaturesRunner.class).toInstance(runner);
-        // binder.bind(NuxeoRunner.class).toInstance(runner);
+        binder.bind(RuntimeHarness.class).toInstance(harness);
+        binder.bind(RuntimeService.class).toInstance(harness.runtime);
     }
 
     protected <T> void bind0(Binder binder, Class<T> type,

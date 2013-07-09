@@ -25,12 +25,12 @@ import org.nuxeo.runtime.api.Framework;
 import org.nuxeo.runtime.model.Adaptable;
 import org.nuxeo.runtime.model.Component;
 import org.nuxeo.runtime.model.ComponentContext;
+import org.nuxeo.runtime.model.RuntimeModelException;
 import org.nuxeo.runtime.model.ComponentInstance;
 import org.nuxeo.runtime.model.ComponentName;
 import org.nuxeo.runtime.model.Extension;
 import org.nuxeo.runtime.model.ExtensionPoint;
 import org.nuxeo.runtime.model.Property;
-import org.nuxeo.runtime.model.RegistrationInfo;
 import org.nuxeo.runtime.model.ReloadableComponent;
 import org.nuxeo.runtime.model.RuntimeContext;
 import org.nuxeo.runtime.service.TimestampedService;
@@ -51,36 +51,28 @@ public class ComponentInstanceImpl implements ComponentInstance {
 
     protected List<OSGiServiceFactory> factories;
 
-    public ComponentInstanceImpl(RegistrationInfoImpl ri) throws Exception {
+    public ComponentInstanceImpl(RegistrationInfoImpl ri) throws RuntimeModelException {
         this.ri = ri;
         if (ri.implementation == null) {
             // TODO: should be an extension component
             instance = this;
         } else {
             // TODO: load class only once when creating the registration info
-            instance = this.ri.context.loadClass(this.ri.implementation).newInstance();
+            try {
+                instance = this.ri.context.loadClass(this.ri.implementation).newInstance();
+            } catch (InstantiationException | IllegalAccessException
+                    | ClassNotFoundException|ClassCircularityError cause) {
+                throw new RuntimeModelException(ri + ": cannot instanciate component", cause);
+            }
         }
     }
 
     @Override
     public Object getInstance() {
-        switch (ri.state) {
-        case RegistrationInfo.RESOLVED:
-            // if not already activated activate it now
-            try {
-                ri.activate();
-                return instance;
-            } catch (Exception e) {
-                log.error(e);
-                // fatal error if development mode - exit
-                Framework.handleDevError(e);
-            }
-            return null;
-        case RegistrationInfo.ACTIVATED:
+        if (ri.lazyActivate()) {
             return instance;
-        default:
-            return null;
         }
+        return null;
     }
 
     public void create() throws Exception {
@@ -112,7 +104,7 @@ public class ComponentInstanceImpl implements ComponentInstance {
 
     // TODO: cache info about implementation to avoid computing it each time
     @Override
-    public void activate() throws Exception {
+    public void activate() throws RuntimeModelException {
         // activate the implementation instance
         try {
             if (instance instanceof Component) {
@@ -127,14 +119,13 @@ public class ComponentInstanceImpl implements ComponentInstance {
         } catch (NoSuchMethodException e) {
             // ignore this exception since the activate method is not mandatory
         } catch (Exception e) {
-            log.error("Failed to activate component: " + getName(), e);
-            Framework.handleDevError(e);
+            throw new RuntimeModelException(this + ": cannot activate", e);
         }
     }
 
     // TODO: cache info about implementation to avoid computing it each time
     @Override
-    public void deactivate() throws Exception {
+    public void deactivate() throws RuntimeModelException {
         // activate the implementation instance
         try {
             unregisterServices();
@@ -150,8 +141,7 @@ public class ComponentInstanceImpl implements ComponentInstance {
         } catch (NoSuchMethodException e) {
             // ignore this exception since the activate method is not mandatory
         } catch (Exception e) {
-            log.error("Failed to deactivate component: " + getName(), e);
-            Framework.handleDevError(e);
+            throw new RuntimeModelException(this + ": cannot deactivate", e);
         }
     }
 
@@ -190,13 +180,11 @@ public class ComponentInstanceImpl implements ComponentInstance {
                 return;
             }
         } else {
-            log.error("Warning: target extension point '"
+            throw new RuntimeModelException("Warning: target extension point '"
                     + extension.getExtensionPoint() + "' of '"
                     + extension.getTargetComponent().getName()
                     + "' is unknown. Check your extension in component "
                     + extension.getComponent().getName());
-            // fatal error if development mode - exit
-            Framework.handleDevError(null);
         }
         // this extension is for us - register it
         // activate the implementation instance
@@ -204,15 +192,10 @@ public class ComponentInstanceImpl implements ComponentInstance {
             ((Component) instance).registerExtension(extension);
         } else {
             // try by reflection
-            try {
-                Method meth = instance.getClass().getDeclaredMethod(
-                        "registerExtension", Extension.class);
-                meth.setAccessible(true);
-                meth.invoke(instance, extension);
-            } catch (Exception e) {
-                // no such method
-                Framework.handleDevError(e);
-            }
+            Method meth = instance.getClass().getDeclaredMethod(
+                    "registerExtension", Extension.class);
+            meth.setAccessible(true);
+            meth.invoke(instance, extension);
         }
     }
 
@@ -224,15 +207,10 @@ public class ComponentInstanceImpl implements ComponentInstance {
             ((Component) instance).unregisterExtension(extension);
         } else {
             // try by reflection
-            try {
-                Method meth = instance.getClass().getDeclaredMethod(
-                        "unregisterExtension", Extension.class);
-                meth.setAccessible(true);
-                meth.invoke(instance, extension);
-            } catch (Exception e) {
-                // no such method
-                Framework.handleDevError(e);
-            }
+            Method meth = instance.getClass().getDeclaredMethod(
+                    "unregisterExtension", Extension.class);
+            meth.setAccessible(true);
+            meth.invoke(instance, extension);
         }
     }
 
@@ -326,10 +304,10 @@ public class ComponentInstanceImpl implements ComponentInstance {
         return ri.toString();
     }
 
-    protected class OSGiServiceFactory implements ServiceFactory {
+    protected class OSGiServiceFactory implements ServiceFactory<Object> {
         protected Class<?> clazz;
 
-        protected ServiceRegistration reg;
+        protected ServiceRegistration<Object> reg;
 
         public OSGiServiceFactory(String className) throws Exception {
             this(ri.getContext().getBundle(), className);
@@ -341,18 +319,20 @@ public class ComponentInstanceImpl implements ComponentInstance {
         }
 
         @Override
-        public Object getService(Bundle bundle, ServiceRegistration registration) {
+        public Object getService(Bundle bundle,
+                ServiceRegistration<Object> registration) {
             return getAdapter(clazz);
         }
 
         @Override
         public void ungetService(Bundle bundle,
-                ServiceRegistration registration, Object service) {
+                ServiceRegistration<Object> registration, Object service) {
             // do nothing
         }
 
+        @SuppressWarnings("unchecked")
         public void register() {
-            reg = ri.getContext().getBundle().getBundleContext().registerService(
+            reg = (ServiceRegistration<Object>) ri.getContext().getBundle().getBundleContext().registerService(
                     clazz.getName(), this, null);
         }
 

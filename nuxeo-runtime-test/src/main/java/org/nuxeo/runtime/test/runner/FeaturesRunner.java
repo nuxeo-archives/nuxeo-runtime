@@ -18,15 +18,13 @@
  */
 package org.nuxeo.runtime.test.runner;
 
-import java.io.IOException;
 import java.lang.annotation.Annotation;
-import java.net.URL;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+
 import org.apache.log4j.MDC;
 import org.junit.Ignore;
 import org.junit.runner.notification.Failure;
@@ -35,9 +33,7 @@ import org.junit.runners.BlockJUnit4ClassRunner;
 import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.InitializationError;
 import org.junit.runners.model.Statement;
-import org.nuxeo.runtime.mockito.MockProvider;
-import org.nuxeo.runtime.test.TargetResourceLocator;
-
+import org.nuxeo.osgi.OSGiLoader;
 import com.google.common.collect.Lists;
 import com.google.inject.Binder;
 import com.google.inject.Guice;
@@ -52,7 +48,7 @@ import com.google.inject.Module;
  */
 public class FeaturesRunner extends BlockJUnit4ClassRunner {
 
-    protected static final AnnotationScanner scanner = new AnnotationScanner();
+    protected final AnnotationScanner scanner;
 
     /**
      * Guice injector.
@@ -61,9 +57,7 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
 
     protected List<RunnerFeature> features;
 
-    protected final TargetResourceLocator locator;
-
-    public static AnnotationScanner getScanner() {
+    public AnnotationScanner getScanner() {
         return scanner;
     }
 
@@ -77,11 +71,9 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
 
     public FeaturesRunner(Class<?> classToRun) throws InitializationError {
         super(classToRun);
-        locator = new TargetResourceLocator(classToRun);
+        scanner = new AnnotationScanner();
         try {
             loadFeatures(getTargetTestClass());
-            initialize();
-
         } catch (Throwable t) {
             throw new InitializationError(Collections.singletonList(t));
         }
@@ -89,15 +81,6 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
 
     public Class<?> getTargetTestClass() {
         return super.getTestClass().getJavaClass();
-    }
-
-
-    public Path getTargetTestBasepath() {
-        return locator.getBasepath();
-    }
-
-    public URL getTargetTestResource(String name) throws IOException {
-        return locator.getTargetTestResource(name);
     }
 
 
@@ -267,21 +250,16 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
     }
 
     protected void stop() throws Exception {
-        try {
-            AssertionError errors = new AssertionError("test cleanup failure");
-            for (RunnerFeature feature : reversed(features)) {
-                try {
-                    feature.stop(this);
-                } catch (Throwable error) {
-                    errors.addSuppressed(error);
-                }
+        AssertionError errors = new AssertionError("test cleanup failure");
+        for (RunnerFeature feature : reversed(features)) {
+            try {
+                feature.stop(this);
+            } catch (Throwable error) {
+                errors.addSuppressed(error);
             }
-            if (errors.getSuppressed().length > 0) {
-                throw errors;
-            }
-        } finally {
-            MockProvider.INSTANCE.clearBindings();
-            MDC.remove("fclass");
+        }
+        if (errors.getSuppressed().length > 0) {
+            throw errors;
         }
     }
 
@@ -315,7 +293,6 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
 
     protected void configureBindings(Binder binder) {
         binder.bind(FeaturesRunner.class).toInstance(this);
-        binder.bind(TargetResourceLocator.class).toInstance(locator);
         for (RunnerFeature feature : features) {
             feature.configure(this, binder);
         }
@@ -345,8 +322,13 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
 
     @Override
     public void run(final RunNotifier notifier) {
+        if (!(FeaturesRunner.class.getClassLoader() instanceof OSGiLoader)) {
+           new OSGiTestLoader().run(getTargetTestClass(), notifier);
+           return;
+        }
         AssertionError errors = new AssertionError("features error");
         try {
+            initialize();
             try {
                 start();
                 try {

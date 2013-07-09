@@ -53,8 +53,10 @@ public interface ComponentManager {
      * the name given in RegistrationInfo.
      *
      * @param ri the registration info
+     * @return
+     * @throws RuntimeModelException
      */
-    void register(RegistrationInfo ri);
+    void register(RegistrationInfo ri) throws RuntimeModelException;
 
     /**
      * Handles the unregistration of the given registration info.
@@ -110,7 +112,7 @@ public interface ComponentManager {
      *
      * @return the pending registrations
      */
-    Map<ComponentName, Set<ComponentName>> getPendingRegistrations();
+    Map<ComponentName, Set<RegistrationInfo>> getPendingRegistrations();
 
     /**
      * Gets the pending extensions by component.

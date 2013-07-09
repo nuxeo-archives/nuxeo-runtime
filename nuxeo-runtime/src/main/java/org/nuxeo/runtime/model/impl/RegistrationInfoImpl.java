@@ -16,6 +16,7 @@ import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
@@ -30,7 +31,7 @@ import org.nuxeo.runtime.ComponentEvent;
 import org.nuxeo.runtime.Version;
 import org.nuxeo.runtime.api.Framework;
 import org.nuxeo.runtime.model.Component;
-import org.nuxeo.runtime.model.ComponentInstance;
+import org.nuxeo.runtime.model.RuntimeModelException;
 import org.nuxeo.runtime.model.ComponentManager;
 import org.nuxeo.runtime.model.ComponentName;
 import org.nuxeo.runtime.model.ConfigurationDescriptor;
@@ -44,7 +45,7 @@ import org.nuxeo.runtime.model.RuntimeContext;
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
  *
  */
-@XObject("component")
+@XObject(value = "component", order = "require,extension")
 public class RegistrationInfoImpl implements RegistrationInfo {
 
     private static final long serialVersionUID = -4135715215018199522L;
@@ -54,46 +55,56 @@ public class RegistrationInfoImpl implements RegistrationInfo {
     // Note: some of these instance variables are accessed directly from other
     // classes in this package.
 
-    transient ComponentManagerImpl manager;
+    protected transient ComponentManagerImpl manager;
 
     @XNode("@service")
-    ServiceDescriptor serviceDescriptor;
+    protected ServiceDescriptor serviceDescriptor;
 
     // the managed object name
     @XNode("@name")
-    ComponentName name;
-
-    @XNode("@disabled")
-    boolean disabled;
-
-    @XNode("configuration")
-    ConfigurationDescriptor config;
-
-    // the registration state
-    int state = UNREGISTERED;
+    protected ComponentName name;
 
     // my aliases
     @XNodeList(value = "alias", type = HashSet.class, componentType = ComponentName.class)
-    Set<ComponentName> aliases;
+    protected Set<ComponentName> aliases = new HashSet<ComponentName>();
+
+    protected final Set<ComponentName> names = new HashSet<ComponentName>();
+
+    @XNode("@disabled")
+    protected boolean disabled;
+
+    @XNode("configuration")
+    protected ConfigurationDescriptor config;
+
+    // the registration state
+    protected int state = UNREGISTERED;
 
     // the object names I depend of
     @XNodeList(value = "require", type = HashSet.class, componentType = ComponentName.class)
-    Set<ComponentName> requires;
+    protected Set<ComponentName> requires = new HashSet<ComponentName>();
+
+    protected final Set<RegistrationInfoImpl> dependsOnMe = new HashSet<RegistrationInfoImpl>();
+
+    protected final Set<ComponentName> requiredPendings = new HashSet<ComponentName>();
+
+    protected final Set<RegistrationInfoImpl> requiredRegistered = new HashSet<RegistrationInfoImpl>();
+
+    protected final Set<RegistrationInfoImpl> requiredResolved = new HashSet<RegistrationInfoImpl>();
 
     @XNode("implementation@class")
-    String implementation;
+    protected String implementation;
 
     @XNodeList(value = "extension-point", type = ExtensionPointImpl[].class, componentType = ExtensionPointImpl.class)
-    ExtensionPointImpl[] extensionPoints;
+    protected ExtensionPointImpl[] extensionPoints;
 
     @XNodeList(value = "extension", type = ExtensionImpl[].class, componentType = ExtensionImpl.class)
-    ExtensionImpl[] extensions;
+    protected ExtensionImpl[] extensions;
 
     @XNodeMap(value = "property", key = "@name", type = HashMap.class, componentType = Property.class)
-    Map<String, Property> properties;
+    protected Map<String, Property> properties;
 
     @XNode("@version")
-    Version version = Version.ZERO;
+    protected Version version = Version.ZERO;
 
     /**
      * To be set when deploying configuration components that are not in a
@@ -103,23 +114,23 @@ public class RegistrationInfoImpl implements RegistrationInfo {
      * component.
      */
     @XNode("@bundle")
-    String bundle;
+    protected String bundle;
 
     @XContent("documentation")
-    String documentation;
+    protected String documentation;
 
-    URL xmlFileUrl;
+    protected URL xmlFileUrl;
 
     /**
      * This is used by the component persistence service to identify
      * registration that was dynamically created and persisted by users.
      */
-    boolean isPersistent;
+    protected boolean isPersistent;
 
-    transient RuntimeContext context;
+    protected transient AbstractRuntimeContext context;
 
     // the managed component
-    transient ComponentInstance component;
+    protected transient ComponentInstanceImpl component;
 
     public RegistrationInfoImpl() {
     }
@@ -138,17 +149,49 @@ public class RegistrationInfoImpl implements RegistrationInfo {
      * fields are initialized.
      *
      * @param manager
+     * @throws RuntimeModelException
      */
-    public void attach(ComponentManagerImpl manager) {
+    public void attach(ComponentManagerImpl manager) throws RuntimeModelException {
         if (this.manager != null) {
             throw new IllegalStateException("Registration '" + name
                     + "' was already attached to a manager");
         }
         this.manager = manager;
+        computeNames();
+        computePendings();
     }
 
-    public void setContext(RuntimeContext rc) {
-        this.context = rc;
+    protected void computeNames() {
+        names.add(name);
+        if (aliases != null) {
+            names.addAll(aliases);
+        }
+    }
+
+    protected void computePendings() throws RuntimeModelException {
+        if (requires == null || requires.isEmpty()) {
+            return;
+        }
+        // fill the requirements and pending map
+        RuntimeModelException.CompoundBuilder  errors = RuntimeModelException.newErrors();
+        for (ComponentName otherName : requires) {
+            RegistrationInfoImpl other = manager.getRegistrationInfo(otherName);
+            if (other != null) {
+                if (other.isResolved()) {
+                    requiredResolved.add(other);
+                } else {
+                    requiredRegistered.add(other);
+                }
+                other.dependsOnMe.add(this);
+            } else {
+                requiredPendings.add(otherName);
+            }
+        }
+        errors.throwOnError();
+    }
+
+    public void setContext(AbstractRuntimeContext rc) {
+        context = rc;
     }
 
     @Override
@@ -166,18 +209,8 @@ public class RegistrationInfoImpl implements RegistrationInfo {
         this.isPersistent = isPersistent;
     }
 
-    public void destroy() {
-        if (requires != null) {
-            requires.clear();
-            requires = null;
-        }
-        component = null;
-        name = null;
-        manager = null;
-    }
-
     public final boolean isDisposed() {
-        return name == null;
+        return manager == null;
     }
 
     @Override
@@ -186,7 +219,7 @@ public class RegistrationInfoImpl implements RegistrationInfo {
     }
 
     @Override
-    public ComponentInstance getComponent() {
+    public ComponentInstanceImpl getComponent() {
         return component;
     }
 
@@ -233,12 +266,12 @@ public class RegistrationInfoImpl implements RegistrationInfo {
     @Override
     public Set<ComponentName> getAliases() {
         return aliases == null ? Collections.<ComponentName> emptySet()
-                : aliases;
+                : Collections.unmodifiableSet(aliases);
     }
 
     @Override
     public Set<ComponentName> getRequiredComponents() {
-        return requires;
+        return Collections.unmodifiableSet(requires);
     }
 
     @Override
@@ -271,29 +304,49 @@ public class RegistrationInfoImpl implements RegistrationInfo {
         return manager;
     }
 
-    synchronized void register() {
+    protected synchronized void register(
+            Set<? extends RegistrationInfoImpl> dependsOnMe) throws RuntimeModelException {
         if (state != UNREGISTERED) {
-            return;
+            throw new IllegalStateException("Component not in registered state"
+                    + this);
         }
+        this.dependsOnMe.addAll(dependsOnMe);
         state = REGISTERED;
+        handlePreRegistered();
         manager.sendEvent(new ComponentEvent(
                 ComponentEvent.COMPONENT_REGISTERED, this));
+        handleRegistered();
+    }
+
+    protected void handlePreRegistered() {
+        for (RegistrationInfoImpl other : dependsOnMe) { // unaliased
+            RegistrationInfoImpl otherImpl = other;
+            otherImpl.requiredPendings.removeAll(names);
+            otherImpl.requiredRegistered.add(this);
+        }
+    }
+
+    protected void handleRegistered() throws RuntimeModelException {
+        if (requiredPendings.isEmpty() && requiredRegistered.isEmpty()) {
+            resolve();
+        }
     }
 
     synchronized void unregister() throws Exception {
-        if (state == UNREGISTERED) {
-            return;
-        }
-        if (state == ACTIVATED || state == RESOLVED) {
-            unresolve();
+        if (state != REGISTERED) {
+            throw new IllegalStateException("Component not in registered state"
+                    + this);
         }
         state = UNREGISTERED;
         manager.sendEvent(new ComponentEvent(
                 ComponentEvent.COMPONENT_UNREGISTERED, this));
-        destroy();
+        for (RegistrationInfoImpl other : requiredResolved) {
+            other.dependsOnMe.remove(this);
+        }
+        manager = null;
     }
 
-    protected ComponentInstance createComponentInstance() throws Exception {
+    protected ComponentInstanceImpl createComponentInstance() throws RuntimeModelException {
         try {
             return new ComponentInstanceImpl(this);
         } catch (Exception e) {
@@ -340,114 +393,225 @@ public class RegistrationInfoImpl implements RegistrationInfo {
         }
     }
 
-    public synchronized void activate() throws Exception {
+    public boolean lazyActivate() {
         if (state != RESOLVED) {
-            return;
+            return isActivated();
+        }
+        try {
+            activate();
+        } catch (Exception e) {
+            log.error("Cannot lazy activate " + this, e);
+            Framework.handleDevError(e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public synchronized void activate() throws RuntimeModelException {
+        if (state != RESOLVED) {
+            throw new IllegalStateException("component not in resolved state ("
+                    + this + ")");
         }
 
-        component = createComponentInstance();
+        if (context.state != RuntimeContext.ACTIVATING
+                && context.state != RuntimeContext.ACTIVATED) {
+            throw new IllegalStateException("context not in activating state ("
+                    + context + ")");
+        }
 
         state = ACTIVATING;
         manager.sendEvent(new ComponentEvent(
                 ComponentEvent.ACTIVATING_COMPONENT, this));
 
-        // activate component
-        component.activate();
-        log.info("Component activated: " + name);
+        handleActivating();
 
         state = ACTIVATED;
         manager.sendEvent(new ComponentEvent(
                 ComponentEvent.COMPONENT_ACTIVATED, this));
 
+        handleActivated();
+
+    }
+
+    protected void handleActivating() throws RuntimeModelException {
+        // check required component
+        for (RegistrationInfoImpl other : requiredResolved) {
+            if (context == other.context) {
+                other.lazyActivate();
+            } else if (other.state != ACTIVATED) {
+                throw new IllegalStateException(
+                        "required component is not activated (" + this + "->"
+                                + other);
+            }
+        }
+
+        component = createComponentInstance();
+
+        component.activate();
+        log.info("Component activated: " + name);
+
+        RuntimeModelException.CompoundBuilder errors = new RuntimeModelException.CompoundBuilder();
         // register contributed extensions if any
         if (extensions != null) {
-            checkExtensions();
             for (Extension xt : extensions) {
+                if (xt.getTargetComponent() == null) {
+                    errors.add(new RuntimeModelException(
+                            "Bad extension declaration (no target attribute specified). Component: "
+                                    + getName()));
+                    continue;
+                }
                 xt.setComponent(component);
                 try {
                     manager.registerExtension(xt);
-                } catch (Exception e) {
-                    String msg = "Failed to register extension to: "
-                            + xt.getTargetComponent() + ", xpoint: "
-                            + xt.getExtensionPoint() + " in component: "
-                            + xt.getComponent().getName();
-                    log.error(msg, e);
-                    msg += " (" + e.toString() + ')';
-                    Framework.getRuntime().getWarnings().add(msg);
-                    Framework.handleDevError(e);
+                } catch (RuntimeModelException e) {
+                    errors.add(e);
                 }
             }
         }
 
         // register pending extensions if any
         ComponentManagerImpl mgr = manager;
-        Set<Extension> pendingExt = mgr.pendingExtensions.remove(name);
-        if (pendingExt != null) {
-            for (Extension xt : pendingExt) {
-                ComponentManagerImpl.loadContributions(this, xt);
-                try {
-                    component.registerExtension(xt);
-                } catch (Exception e) {
-                    String msg = "Failed to register extension to: "
-                            + xt.getTargetComponent() + ", xpoint: "
-                            + xt.getExtensionPoint() + " in component: "
-                            + xt.getComponent().getName();
-                    log.error(msg, e);
-                    msg += " (" + e.toString() + ')';
-                    Framework.getRuntime().getWarnings().add(msg);
-                    Framework.handleDevError(e);
-                }
+        Set<Extension> contributedExtensions = mgr.extensionPendingsByComponent.remove(name);
+        if (contributedExtensions == null) {
+            return;
+        }
+
+        for (Extension xt : contributedExtensions) {
+            ComponentManagerImpl.loadContributions(this, xt);
+            try {
+                component.registerExtension(xt);
+            } catch (Exception e) {
+                errors.add(new RuntimeModelException("Failed to register extension to: "
+                        + xt.getTargetComponent() + ", xpoint: "
+                        + xt.getExtensionPoint() + " in component: "
+                        + xt.getComponent().getName(), e));
             }
         }
+        errors.throwOnError();
     }
 
-    public synchronized void deactivate() throws Exception {
+    protected void handleActivated() {
+
+    }
+
+    public synchronized void deactivate() throws RuntimeModelException {
         if (state != ACTIVATED) {
             return;
         }
 
         state = DEACTIVATING;
-        manager.sendEvent(new ComponentEvent(
-                ComponentEvent.DEACTIVATING_COMPONENT, this));
+        RuntimeModelException.CompoundBuilder errors = new RuntimeModelException.CompoundBuilder();
 
+        try {
+            manager.sendEvent(new ComponentEvent(
+                    ComponentEvent.DEACTIVATING_COMPONENT, this));
+        } catch (RuntimeModelException e) {
+            errors.add(e);
+        }
+
+        handleDeactivating();
+
+        state = RESOLVED;
+        try {
+            manager.sendEvent(new ComponentEvent(
+                    ComponentEvent.COMPONENT_DEACTIVATED, this));
+        } catch (RuntimeModelException e) {
+            errors.add(e);
+        }
+
+        handleDeactivated();
+
+        errors.throwOnError();
+    }
+
+    protected void handleDeactivating() throws RuntimeModelException {
         // unregister contributed extensions if any
+        RuntimeModelException.CompoundBuilder errors = RuntimeModelException.newErrors();
         if (extensions != null) {
             for (Extension xt : extensions) {
                 try {
                     manager.unregisterExtension(xt);
-                } catch (Exception e) {
-                    log.error(
-                            "Failed to unregister extension. Contributor: "
-                                    + xt.getComponent() + " to "
-                                    + xt.getTargetComponent() + "; xpoint: "
-                                    + xt.getExtensionPoint(), e);
-                    Framework.handleDevError(e);
+                } catch (RuntimeModelException e) {
+                    errors.add(e);
                 }
             }
         }
 
-        component.deactivate();
+        // deactivate depends
+        Iterator<RegistrationInfoImpl> it = dependsOnMe.iterator();
+        for (RegistrationInfoImpl other:dependsOnMe) {
+            try {
+                other.deactivate();
+            } catch (RuntimeModelException e) {
+                errors.add(e);
+            }
+        }
 
+        // deactivate component
+        try {
+            component.deactivate();
+        } catch (RuntimeModelException e) {
+            log.error("Failed to de-activate " + this, e);
+            Framework.handleDevError(e);
+        }
         component = null;
-
-        state = RESOLVED;
-        manager.sendEvent(new ComponentEvent(
-                ComponentEvent.COMPONENT_DEACTIVATED, this));
+        errors.throwOnError();
     }
 
-    public synchronized void resolve() throws Exception {
+    protected void handleDeactivated() {
+        log.info("Component deactivated: " + name);
+    }
+
+    public synchronized void resolve() throws RuntimeModelException {
         if (state != REGISTERED) {
             return;
         }
 
-        // register services
-        manager.registerServices(this);
-
         state = RESOLVED;
+
+        handleResolving();
+
         manager.sendEvent(new ComponentEvent(ComponentEvent.COMPONENT_RESOLVED,
                 this));
-        // TODO lazy activation
-        activate();
+
+        handleResolved();
+
+    }
+
+    protected void handleResolving() throws RuntimeModelException {
+        manager.registerServices(this);
+        RuntimeModelException.CompoundBuilder errors = RuntimeModelException.newErrors();
+        for (RegistrationInfoImpl other : dependsOnMe) {
+            if (other.context != context) {
+                continue;
+            }
+            other.requiredRegistered.remove(this);
+            other.requiredResolved.add(this);
+            if (other.requiredPendings.isEmpty()
+                    && other.requiredRegistered.isEmpty()) {
+                try {
+                    other.resolve();
+                } catch (RuntimeModelException e) {
+                    errors.add(e);
+                }
+            }
+        }
+        errors.throwOnError();
+    }
+
+    protected void handleResolved() throws RuntimeModelException {
+        for (RegistrationInfoImpl other : dependsOnMe) {
+            if (other.context == context) {
+                continue;
+            }
+            other.requiredRegistered.remove(this);
+            other.requiredResolved.add(this);
+            if (other.requiredPendings.isEmpty()
+                    && other.requiredRegistered.isEmpty()) {
+                other.resolve();
+            }
+        }
     }
 
     public synchronized void unresolve() throws Exception {
@@ -455,12 +619,12 @@ public class RegistrationInfoImpl implements RegistrationInfo {
             return;
         }
 
-        // un-register services
-        manager.unregisterServices(this);
-
         if (state == ACTIVATED) {
             deactivate();
         }
+
+        manager.unregisterServices(this);
+
         state = REGISTERED;
         manager.sendEvent(new ComponentEvent(
                 ComponentEvent.COMPONENT_UNRESOLVED, this));
@@ -468,12 +632,12 @@ public class RegistrationInfoImpl implements RegistrationInfo {
 
     @Override
     public synchronized boolean isActivated() {
-        return state == ACTIVATED;
+        return state >= ACTIVATED;
     }
 
     @Override
     public synchronized boolean isResolved() {
-        return state == RESOLVED;
+        return state >= RESOLVED;
     }
 
     @Override
@@ -491,35 +655,6 @@ public class RegistrationInfoImpl implements RegistrationInfo {
     @Override
     public String getImplementation() {
         return implementation;
-    }
-
-    public void checkExtensions() {
-        if (extensions == null) {
-            return;
-        }
-        // HashSet<String> targets = new HashSet<String>();
-        for (ExtensionImpl xt : extensions) {
-            if (xt.target == null) {
-                Framework.getRuntime().getWarnings().add(
-                        "Bad extension declaration (no target attribute specified). Component: "
-                                + getName());
-                continue;
-            }
-            // TODO do nothing for now -> fix the faulty components and then
-            // activate these warnings
-            // String key = xt.target.getName()+"#"+xt.getExtensionPoint();
-            // if (targets.contains(key)) { // multiple extensions to same
-            // target point declared in same component
-            // String message =
-            // "Component "+getName()+" contains multiple extensions to "+key;
-            // Framework.getRuntime().getWarnings().add(message);
-            // //TODO: un-comment the following line if you want to treat this
-            // as a dev. error
-            // //Framework.handleDevError(new Error(message));
-            // } else {
-            // targets.add(key);
-            // }
-        }
     }
 
     @Override

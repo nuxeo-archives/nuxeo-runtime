@@ -22,6 +22,7 @@ import java.lang.annotation.Annotation;
 import java.lang.annotation.Inherited;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.List;
@@ -35,7 +36,7 @@ import com.google.common.collect.Iterables;
 /**
  * @author <a href="mailto:bs@nuxeo.com">Bogdan Stefanescu</a>
  */
-public class AnnotationScanner {
+public class AnnotationScanner  {
 
     protected final Set<Class<?>> visitedClasses = new HashSet<Class<?>>();
 
@@ -71,12 +72,12 @@ public class AnnotationScanner {
         return result.get(0);
     }
 
-    @SuppressWarnings("unchecked")
     public <T extends Annotation> List<T> getAnnotations(Class<?> clazz, Class<T> annotationType) {
-        if (!visitedClasses.contains(clazz)) {
-            scan(clazz);
+        List<Annotation> annotations = classes.get(clazz);
+        if (annotations == null) {
+            return Collections.emptyList();
         }
-        return (List<T>) ImmutableList.copyOf(Iterables.filter(classes.get(clazz), Predicates.instanceOf(annotationType)));
+        return (List<T>) ImmutableList.copyOf(Iterables.filter(annotations, Predicates.instanceOf(annotationType)));
     }
 
     /**
