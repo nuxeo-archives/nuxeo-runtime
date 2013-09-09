@@ -54,6 +54,7 @@ import org.apache.geronimo.transaction.manager.NamedXAResourceFactory;
 import org.apache.geronimo.transaction.manager.RecoverableTransactionManager;
 import org.apache.geronimo.transaction.manager.TransactionManagerImpl;
 import org.apache.xbean.naming.reference.SimpleReference;
+import org.nuxeo.common.logging.SequenceTracer;
 import org.nuxeo.runtime.api.InitialContextAccessor;
 
 /**
@@ -543,6 +544,7 @@ public class NuxeoContainer {
         @Override
         public void begin() throws NotSupportedException, SystemException {
             check();
+            SequenceTracer.start("begin tx");
             transactionManager.begin();
         }
 
@@ -551,14 +553,20 @@ public class NuxeoContainer {
                 HeuristicRollbackException, IllegalStateException,
                 RollbackException, SecurityException, SystemException {
             check();
+            long start = System.nanoTime();
             transactionManager.commit();
+            long elapsed = System.nanoTime() - start;
+            SequenceTracer.stop("commit tx "+ (long) (elapsed / 1000000) + "ms");
         }
 
         @Override
         public void rollback() throws IllegalStateException, SecurityException,
                 SystemException {
             check();
+            long start = System.nanoTime();
             transactionManager.rollback();
+            long elapsed = System.nanoTime() - start;
+            SequenceTracer.destroy("rollback tx " + (long) (elapsed / 1000000) + "ms");
         }
     }
 
