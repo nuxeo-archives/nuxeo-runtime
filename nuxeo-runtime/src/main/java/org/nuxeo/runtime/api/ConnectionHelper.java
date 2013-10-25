@@ -173,7 +173,7 @@ public class ConnectionHelper {
             }
 
             Connection connection;
-            if (transactionForShare != null) {
+            if (transactionForShare != null && !"rollback".equals(methodName)) {
                 // check that we're still in the same transaction
                 // this also enforces single-threaded use of
                 // the shared connection
