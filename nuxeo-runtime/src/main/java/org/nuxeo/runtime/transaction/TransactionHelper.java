@@ -19,6 +19,7 @@ import javax.transaction.Status;
 import javax.transaction.SystemException;
 import javax.transaction.Transaction;
 import javax.transaction.TransactionManager;
+import javax.transaction.TransactionSynchronizationRegistry;
 import javax.transaction.UserTransaction;
 
 import org.apache.commons.logging.Log;
@@ -39,18 +40,10 @@ public class TransactionHelper {
      * Various binding names for the UserTransaction. They depend on the
      * application server used and how the configuration is done.
      */
-    public static final String[] UT_NAMES = { "java:comp/UserTransaction", // standard
-            "java:comp/env/UserTransaction", // manual binding outside appserver
-            "UserTransaction" // jboss
-    };
-
-    /**
-     * Various binding names for the TransactionManager. They depend on the
-     * application server used and how the configuration is done.
-     */
-    public static final String[] TM_NAMES = { "java:comp/TransactionManager", // common
-            "java:comp/env/TransactionManager", // manual binding
-            "java:TransactionManager" //
+    public static final String[] NAMESPACES = { "java:comp", // J2EE
+            "java:comp/env", // manual binding outside appserver
+            "java:", // ????
+            "" // JBoss
     };
 
     /**
@@ -61,26 +54,17 @@ public class TransactionHelper {
      */
     public static UserTransaction lookupUserTransaction()
             throws NamingException {
-        InitialContext context = new InitialContext();
-        int i = 0;
-        for (String name : UT_NAMES) {
-            try {
-                final Object lookup = context.lookup(name);
-                UserTransaction userTransaction = (UserTransaction) lookup;
-                if (userTransaction != null) {
-                    if (i != 0) {
-                        // put successful name first for next time
-                        UT_NAMES[i] = UT_NAMES[0];
-                        UT_NAMES[0] = name;
-                    }
-                    return userTransaction;
-                }
-            } catch (NamingException e) {
-                // try next one
-            }
-            i++;
-        }
-        throw new NamingException("UserTransaction not found in JNDI");
+        return lookup(UserTransaction.class);
+    }
+
+
+    /**
+     * Looks up the transaction synchronization registry
+     *
+     * @since 5.9
+     */
+    public static TransactionSynchronizationRegistry lookupTransactionSynchronizationRegistry() throws NamingException {
+        return lookup(TransactionSynchronizationRegistry.class);
     }
 
     /**
@@ -89,7 +73,7 @@ public class TransactionHelper {
      * Assumes {@link #lookupUserTransaction} has been called once before.
      */
     public static String getUserTransactionJNDIName() {
-        return UT_NAMES[0];
+        return composeName(NAMESPACES[0],UserTransaction.class.getSimpleName());
     }
 
     /**
@@ -100,25 +84,35 @@ public class TransactionHelper {
      */
     public static TransactionManager lookupTransactionManager()
             throws NamingException {
-        InitialContext context = new InitialContext();
-        int i = 0;
-        for (String name : TM_NAMES) {
+        return lookup(TransactionManager.class);
+    }
+
+
+    protected static <T> T lookup(Class<T> type) throws NamingException {
+        InitialContext dir = new InitialContext();
+        String name = type.getSimpleName();
+        for (int i = 0; i < NAMESPACES.length; ++i) {
+            String ns = NAMESPACES[i];
             try {
-                TransactionManager transactionManager = (TransactionManager) context.lookup(name);
-                if (transactionManager != null) {
-                    if (i != 0) {
-                        // put successful name first for next time
-                        TM_NAMES[i] = TM_NAMES[0];
-                        TM_NAMES[0] = name;
+                T obj = type.cast(dir.lookup(composeName(ns, name)));
+                if (i != 0) {
+                    synchronized (NAMESPACES) {
+                        if (!ns.equals(NAMESPACES[0])) {
+                            NAMESPACES[i] = NAMESPACES[0];
+                            NAMESPACES[0] = ns;
+                        }
                     }
-                    return transactionManager;
                 }
+                return obj;
             } catch (NamingException e) {
                 // try next one
             }
-            i++;
         }
-        throw new NamingException("TransactionManager not found in JNDI");
+        throw new NamingException(type.getSimpleName() + " not found in JNDI");
+    }
+
+    protected static String composeName(String ns, String name) {
+        return ns.concat("/").concat(name);
     }
 
     /**
@@ -165,11 +159,11 @@ public class TransactionHelper {
     public static boolean startTransaction() {
         UserTransaction ut;
         try {
+            ut = lookupUserTransaction();
+            ut.begin();
             if (log.isDebugEnabled()) {
                 log.debug("Starting transaction");
             }
-            ut = lookupUserTransaction();
-            ut.begin();
             return true;
         } catch (NamingException e) {
             // no transaction
@@ -332,5 +326,6 @@ public class TransactionHelper {
         }
         return false;
     }
+
 
 }

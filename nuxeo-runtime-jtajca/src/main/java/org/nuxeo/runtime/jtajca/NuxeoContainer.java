@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import javax.naming.CompositeName;
 import javax.naming.Context;
 import javax.naming.InitialContext;
+import javax.naming.InvalidNameException;
 import javax.naming.Name;
 import javax.naming.NamingException;
 import javax.naming.Reference;
@@ -35,11 +36,11 @@ import javax.security.auth.Subject;
 import javax.transaction.HeuristicMixedException;
 import javax.transaction.HeuristicRollbackException;
 import javax.transaction.InvalidTransactionException;
-import javax.transaction.NotSupportedException;
 import javax.transaction.RollbackException;
 import javax.transaction.SystemException;
 import javax.transaction.Transaction;
 import javax.transaction.TransactionManager;
+import javax.transaction.TransactionSynchronizationRegistry;
 import javax.transaction.UserTransaction;
 
 import org.apache.commons.logging.Log;
@@ -77,13 +78,17 @@ public class NuxeoContainer {
 
     public static final String JNDI_TRANSACTION_MANAGER = "java:comp/TransactionManager";
 
+    public static final String JNDI_TRANSACTION_SYNCHRONIZATION_REGISTRY = "java:comp/TransactionSynchronizationRegistry";
+
     public static final String JNDI_USER_TRANSACTION = "java:comp/UserTransaction";
 
     public static final String JNDI_NUXEO_CONNECTION_MANAGER_PREFIX = "java:comp/NuxeoConnectionManager/";
 
     private static TransactionManagerWrapper transactionManager;
 
-    private static final UserTransaction userTransaction = new UserTransactionImpl();
+    private static TransactionSynchronizationRegistry transactionSynchronizationRegistry;
+
+    private static UserTransaction userTransaction;
 
     /**
      * Per-repository connection managers.
@@ -163,17 +168,23 @@ public class NuxeoContainer {
     protected static void installTransactionManager(
             TransactionManagerConfiguration config) throws NamingException {
         transactionManager = lookupTransactionManager();
-        if (transactionManager == null) {
-            if (config == null) {
-                config = new TransactionManagerConfiguration();
-            }
-            initTransactionManager(config);
-            addDeepBinding(rootContext, new CompositeName(
-                    JNDI_TRANSACTION_MANAGER), getTransactionManagerReference());
-            addDeepBinding(rootContext,
-                    new CompositeName(JNDI_USER_TRANSACTION),
-                    getUserTransactionReference());
+        if (transactionManager != null) {
+            transactionSynchronizationRegistry = lookupTransactionSynchronizationRegistry();
+            userTransaction = lookupUserTransaction();
+            return;
         }
+        if (config == null) {
+            config = new TransactionManagerConfiguration();
+        }
+        initTransactionManager(config);
+        addDeepBinding(rootContext,
+                new CompositeName(JNDI_TRANSACTION_MANAGER),
+                getTransactionManagerReference());
+        addDeepBinding(rootContext, new CompositeName(
+                JNDI_TRANSACTION_SYNCHRONIZATION_REGISTRY),
+                getTransactionSynchronizationRegistryReference());
+        addDeepBinding(rootContext, new CompositeName(JNDI_USER_TRANSACTION),
+                getUserTransactionReference());
     }
 
     /**
@@ -431,6 +442,11 @@ public class NuxeoContainer {
         return transactionManager;
     }
 
+
+    public static TransactionSynchronizationRegistry getTransactionSynchronizationRegistry() {
+        return transactionSynchronizationRegistry;
+    }
+
     protected static Reference getTransactionManagerReference() {
         return new SimpleReference() {
             private static final long serialVersionUID = 1L;
@@ -442,6 +458,16 @@ public class NuxeoContainer {
         };
     }
 
+    protected static Reference getTransactionSynchronizationRegistryReference() throws InvalidNameException {
+        return new SimpleReference() {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public Object getContent() throws NamingException {
+                return getTransactionSynchronizationRegistry();
+            }
+        };
+    }
     /**
      * Gets the user transaction used by the container.
      *
@@ -494,8 +520,10 @@ public class NuxeoContainer {
 
     public static synchronized void initTransactionManager(
             TransactionManagerConfiguration config) throws NamingException {
-        TransactionManager tm = createTransactionManager(config);
+        TransactionManagerImpl tm = createTransactionManager(config);
         transactionManager = new TransactionManagerWrapper(tm);
+        transactionSynchronizationRegistry = tm;
+        userTransaction = tm;
     }
 
     protected static TransactionManagerWrapper lookupTransactionManager() {
@@ -509,6 +537,14 @@ public class NuxeoContainer {
             return (TransactionManagerWrapper) tm;
         }
         return new TransactionManagerWrapper(tm);
+    }
+
+    protected static TransactionSynchronizationRegistry lookupTransactionSynchronizationRegistry() throws NamingException {
+        return resolveBinding("TransactionSynchronizationRegistry");
+    }
+
+    protected static UserTransaction lookupUserTransaction() throws NamingException {
+       return resolveBinding("UserTransaction");
     }
 
     public static synchronized ConnectionManagerWrapper initConnectionManager(
@@ -549,7 +585,7 @@ public class NuxeoContainer {
         return null;
     }
 
-    protected static TransactionManager createTransactionManager(
+    protected static TransactionManagerImpl createTransactionManager(
             TransactionManagerConfiguration config) {
         try {
             return new TransactionManagerImpl(config.transactionTimeoutSeconds);
@@ -559,85 +595,6 @@ public class NuxeoContainer {
         }
     }
 
-    /**
-     * User transaction that uses this container's transaction manager.
-     *
-     * @since 5.6
-     */
-    public static class UserTransactionImpl implements UserTransaction {
-
-        protected boolean checked;
-
-        protected void check() throws SystemException {
-            if (transactionManager != null) {
-                return;
-            }
-            if (!checked) {
-                checked = true;
-                transactionManager = lookupTransactionManager();
-            }
-            if (transactionManager == null) {
-                throw new SystemException("No active transaction manager");
-            }
-        }
-
-        @Override
-        public int getStatus() throws SystemException {
-            check();
-            return transactionManager.getStatus();
-        }
-
-        @Override
-        public void setRollbackOnly() throws IllegalStateException,
-                SystemException {
-            check();
-            transactionManager.setRollbackOnly();
-        }
-
-        @Override
-        public void setTransactionTimeout(int seconds) throws SystemException {
-            check();
-            transactionManager.setTransactionTimeout(seconds);
-        }
-
-        @Override
-        public void begin() throws NotSupportedException, SystemException {
-            check();
-            transactionManager.begin();
-            timers.put(transactionManager.getTransaction(),
-                    transactionTimer.time());
-            concurrentCount.inc();
-            if (concurrentCount.getCount() > concurrentMaxCount.getCount()) {
-                concurrentMaxCount.inc();
-            }
-        }
-
-        @Override
-        public void commit() throws HeuristicMixedException,
-                HeuristicRollbackException, IllegalStateException,
-                RollbackException, SecurityException, SystemException {
-            check();
-            Timer.Context timerContext = timers.remove(transactionManager.getTransaction());
-            transactionManager.commit();
-            if (timerContext != null) {
-                timerContext.stop();
-            }
-            concurrentCount.dec();
-        }
-
-        @Override
-        public void rollback() throws IllegalStateException, SecurityException,
-                SystemException {
-            check();
-            Timer.Context timerContext = timers.remove(transactionManager.getTransaction());
-            transactionManager.rollback();
-            concurrentCount.dec();
-            if (timerContext != null) {
-                timerContext.stop();
-            }
-            rollbackCount.inc();
-        }
-    }
 
     /**
      * Creates a Geronimo pooled connection manager using a Geronimo transaction
@@ -811,5 +768,6 @@ public class NuxeoContainer {
             return config;
         }
     }
+
 
 }

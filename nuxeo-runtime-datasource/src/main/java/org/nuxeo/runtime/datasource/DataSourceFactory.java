@@ -37,8 +37,6 @@ import javax.sql.DataSource;
 import javax.sql.XADataSource;
 
 import org.apache.commons.beanutils.BeanUtils;
-import org.apache.commons.dbcp.BasicDataSource;
-import org.apache.commons.dbcp.BasicDataSourceFactory;
 import org.apache.commons.dbcp.managed.BasicManagedDataSource;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -108,9 +106,10 @@ public class DataSourceFactory implements ObjectFactory {
                     ref.add(new StringRefAddr(URL_LOWER, en.getValue()));
                 }
             }
-            ObjectFactory factory = new BasicDataSourceFactory();
+            ObjectFactory factory = new BasicManagedDataSourceFactory();
             ds = (DataSource) factory.getObjectInstance(ref, name, nameCtx, env);
-            BasicDataSource bds = (BasicDataSource) ds;
+            BasicManagedDataSource bmds = (BasicManagedDataSource) ds;
+            bmds.setTransactionManager(new LazyTransactionManager());
 
             // set properties
             for (Entry<String, String> en : properties.entrySet()) {
@@ -118,7 +117,7 @@ public class DataSourceFactory implements ObjectFactory {
                 if (URL_LOWER.equalsIgnoreCase(key)) {
                     continue;
                 }
-                bds.addConnectionProperty(key, en.getValue());
+                bmds.addConnectionProperty(key, en.getValue());
             }
         } else {
             ObjectFactory factory = new BasicManagedDataSourceFactory();

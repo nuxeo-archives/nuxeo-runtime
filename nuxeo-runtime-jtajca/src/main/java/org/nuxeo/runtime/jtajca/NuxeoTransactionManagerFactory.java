@@ -21,6 +21,8 @@ import javax.naming.RefAddr;
 import javax.naming.Reference;
 import javax.naming.spi.ObjectFactory;
 import javax.transaction.TransactionManager;
+import javax.transaction.TransactionSynchronizationRegistry;
+import javax.transaction.UserTransaction;
 
 import org.apache.commons.beanutils.BeanUtils;
 import org.apache.commons.logging.Log;
@@ -38,9 +40,6 @@ public class NuxeoTransactionManagerFactory implements ObjectFactory {
     public Object getObjectInstance(Object obj, Name objName, Context nameCtx,
             Hashtable<?, ?> env) throws Exception {
         Reference ref = (Reference) obj;
-        if (!TransactionManager.class.getName().equals(ref.getClassName())) {
-            return null;
-        }
         if (NuxeoContainer.getTransactionManager() == null) {
             // initialize
             TransactionManagerConfiguration config = new TransactionManagerConfiguration();
@@ -57,7 +56,15 @@ public class NuxeoTransactionManagerFactory implements ObjectFactory {
             }
             NuxeoContainer.initTransactionManager(config);
         }
-        return NuxeoContainer.getTransactionManager();
+        final String className = ref.getClassName();
+        if (className.equals(UserTransaction.class.getName())) {
+            return NuxeoContainer.getUserTransaction();
+        } else if (className.equals(TransactionManager.class.getName())) {
+            return NuxeoContainer.getTransactionManager();
+        } else if (className.equals(TransactionSynchronizationRegistry.class.getName())) {
+            return NuxeoContainer.getTransactionSynchronizationRegistry();
+        }
+        throw new IllegalArgumentException("Unknown " + className + " type");
     }
 
 }
