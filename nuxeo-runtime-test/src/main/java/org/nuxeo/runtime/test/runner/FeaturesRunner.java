@@ -167,7 +167,7 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
                 return config;
             }
         }
-        return null;
+        return Defaults.of(type);
     }
 
     /**
