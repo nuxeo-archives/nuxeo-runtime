@@ -70,7 +70,7 @@ public class RegistrationInfoImpl implements RegistrationInfo {
     ConfigurationDescriptor config;
 
     // the registration state
-    int state = UNREGISTERED;
+    volatile int state = UNREGISTERED;
 
     // my aliases
     @XNodeList(value = "alias", type = HashSet.class, componentType = ComponentName.class)
@@ -148,7 +148,7 @@ public class RegistrationInfoImpl implements RegistrationInfo {
     }
 
     public void setContext(RuntimeContext rc) {
-        this.context = rc;
+        context = rc;
     }
 
     @Override

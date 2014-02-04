@@ -205,22 +205,30 @@ public class ComponentManagerImpl implements ComponentManager {
     }
 
     @Override
-    public synchronized ComponentInstance getComponentProvidingService(
+    public ComponentInstance getComponentProvidingService(
             Class<?> serviceClass) {
         try {
             RegistrationInfoImpl ri = services.get(serviceClass.getName());
             if (ri != null) {
-                if (!ri.isActivated()) {
-                    if (ri.isResolved()) {
-                        ri.activate(); // activate the component if not yet
-                                       // activated
-                    } else {
-                        // Hack to avoid messages during TypeService activation
-                        if (!serviceClass.getSimpleName().equals("TypeProvider")) {
-                            log.debug("The component exposing the service "
-                                    + serviceClass + " is not resolved");
+                if (ri.isActivated()) {
+                    synchronized (ri) {
+                        if (ri.isActivated()) {
+                            return ri.getComponent();
                         }
-                        return null;
+                        if (ri.isResolved()) {
+                            ri.activate(); // activate the component if not
+                                           // yet
+                                           // activated
+                        } else {
+                            // Hack to avoid messages during TypeService
+                            // activation
+                            if (!serviceClass.getSimpleName().equals(
+                                    "TypeProvider")) {
+                                log.debug("The component exposing the service "
+                                        + serviceClass + " is not resolved");
+                            }
+                            return null;
+                        }
                     }
                 }
                 return ri.getComponent();
