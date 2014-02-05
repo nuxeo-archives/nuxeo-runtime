@@ -53,7 +53,7 @@ import com.google.inject.Inject;
  */
 public class LogCaptureFeature extends SimpleFeature {
 
-    public class NoLogCaptureFilterException extends Exception {
+    public static class NoLogCaptureFilterException extends Exception {
 
         private static final long serialVersionUID = 1L;
 
@@ -69,7 +69,7 @@ public class LogCaptureFeature extends SimpleFeature {
         Class<? extends LogCaptureFeature.Filter> value();
     }
 
-    public class Result {
+    public static class Result {
 
         protected final ArrayList<LoggingEvent> caughtEvents = new ArrayList<LoggingEvent>();
 
@@ -142,11 +142,10 @@ public class LogCaptureFeature extends SimpleFeature {
             Object test) throws Exception {
 
         FilterWith filterProvider = runner.getConfig(method, FilterWith.class);
-
-        if (filterProvider == null) {
+        Class<? extends Filter> filterClass = filterProvider.value();
+        if (filterClass == null) {
             return;
         }
-        Class<? extends Filter> filterClass = filterProvider.value();
         logCaptureFilter = filterClass.newInstance();
         rootLogger.addAppender(logAppender);
     }

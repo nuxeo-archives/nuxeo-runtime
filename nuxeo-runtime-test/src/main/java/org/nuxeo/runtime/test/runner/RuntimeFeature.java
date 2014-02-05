@@ -150,6 +150,7 @@ public class RuntimeFeature extends SimpleFeature {
         }
         // Deploy bundles
         deployTestClassBundles();
+        harness.fireFrameworkStarted();
     }
 
     @Override
