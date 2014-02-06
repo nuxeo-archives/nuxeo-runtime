@@ -106,6 +106,7 @@ public class TestDataSourceComponent extends NXRuntimeTestCase {
     }
 
     @Test
+    @Ignore // managed connection requires a tm being installed
     public void testNonXANoTM() throws Exception {
         deployContrib(TEST_BUNDLE, DATASOURCE_CONTRIB);
         checkDataSourceOk("foo", true);
