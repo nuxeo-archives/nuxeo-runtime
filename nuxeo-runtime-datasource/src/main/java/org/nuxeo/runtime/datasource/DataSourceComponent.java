@@ -33,6 +33,7 @@ import javax.sql.DataSource;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.nuxeo.runtime.jtajca.NuxeoContainer;
 import org.nuxeo.runtime.model.ComponentContext;
 import org.nuxeo.runtime.model.ComponentInstance;
 import org.nuxeo.runtime.model.DefaultComponent;
@@ -91,6 +92,10 @@ public class DataSourceComponent extends DefaultComponent {
 
     @Override
     public void applicationStarted(ComponentContext context) throws Exception {
+        if (!NuxeoContainer.isInstalled()) {
+            log.warn("Nuxeo container not installed, cannot deploy datasources");
+            return;
+        }
         started = true;
         for (DataSourceDescriptor datasourceDesc : datasources.values()) {
             bindDataSource(datasourceDesc);
