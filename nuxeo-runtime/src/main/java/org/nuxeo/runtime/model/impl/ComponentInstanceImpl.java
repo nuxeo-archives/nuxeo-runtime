@@ -240,10 +240,10 @@ public class ComponentInstanceImpl implements ComponentInstance {
     public <T> T getAdapter(Class<T> adapter) {
         T res = null;
         Object object = getInstance();
-        if (object instanceof Adaptable) {
+        if (adapter.isAssignableFrom(object.getClass())) {
+        	res = adapter.cast(object);
+        } else if (object instanceof Adaptable) {
             res = ((Adaptable) object).getAdapter(adapter);
-        } else if (adapter.isAssignableFrom(object.getClass())) {
-            res = adapter.cast(object);
         }
         // to handle hot reload
         if (res instanceof TimestampedService
