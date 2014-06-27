@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.Set;
-
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -84,7 +83,7 @@ public class OSGiLoader extends ClassLoader {
     protected Class<?> findClass(String name) throws ClassNotFoundException {
 
         // in boot packages
-        if (context.bundle.osgi.matchBootPackage(name)) {
+        if (osgi.matchBootPackage(name)) {
             throw new ClassNotFoundException("in boot package");
         }
 
@@ -114,17 +113,27 @@ public class OSGiLoader extends ClassLoader {
                 + " scope");
     }
 
+    protected Class<?> defineClass(String name, byte[] data) {
+        try {
+            return defineClass(name, data, 0, data.length);
+        } finally {
+
+        }
+    }
+
     protected Class<?> findLocalClass(String name, String path)
             throws ClassNotFoundException {
         Class<?> clazz = findLoadedClass(name);
         if (clazz != null) {
-            return clazz;
+            return clazz; // already loaded;
         }
+
+        Set<OSGiLoader> loaders = wiring.mayContains(path);
+        if (!loaders.contains(this)) {
+            return null; // in other loaders
+        }
+
         synchronized (getClassLoadingLock(name)) {
-            Set<OSGiLoader> loaders = wiring.mayContains(path);
-            if (!loaders.contains(this)) {
-                return null; // in other loaders
-            }
             URL location = getBundleFile(path);
             if (location == null) {
                 return null;
@@ -136,8 +145,10 @@ public class OSGiLoader extends ClassLoader {
                 throw new ClassNotFoundException("No " + name
                         + " available in " + this, cause);
             }
-            clazz = defineClass(name, data, 0, data.length);
+            clazz = defineClass(name, data);
         }
+
+        osgi.classLoaded(this, clazz);
 
         return clazz;
     }

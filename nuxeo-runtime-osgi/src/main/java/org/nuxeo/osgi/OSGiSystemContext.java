@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Stack;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.apache.commons.logging.Log;
@@ -344,5 +345,46 @@ public class OSGiSystemContext extends OSGiBundleContext {
             }
         }
         return false;
+    }
+
+    protected ThreadLocal<LazyActivator> lazyActivator =
+            new ThreadLocal<>();
+
+    protected class ClassLoading {
+
+        OSGiLoader loader;
+        String name;
+
+    }
+
+    protected class ClassLoaded {
+        OSGiLoader loader;
+        Class<?> clazz;
+    }
+
+    protected class LazyActivator  {
+
+        Stack<ClassLoading> loading;
+
+        Stack<OSGiLoader> loaded;
+
+        protected void classLoading(OSGiLoader loader, String name) {
+            loading.push(new ClassLoading());
+        }
+
+        protected void classLoaded(OSGiLoader loader, Class<?> clazz) {
+            OSGiLoader loader = loading.pop();
+            if (!loading.isEmpty()) {
+                loaded.push(loader);
+            }
+        }
+    }
+
+    protected void classLoading(OSGiLoader loader, String name) {
+        lazyActivator.get().classLoading(loader, name);
+    }
+
+    protected void classLoaded(OSGiLoader osGiLoader, Class<?> clazz) {
+        lazyActivator.get().classLoaded(loader, clazz);
     }
 }
