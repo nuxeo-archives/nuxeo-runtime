@@ -170,8 +170,12 @@ public final class Framework {
     }
 
     public static void shutdown() throws Exception {
-        if (runtime != null) {
+        if (runtime == null) {
+            throw new IllegalStateException("runtime not exist");
+        }
+        try {
             runtime.stop();
+        } finally {
             runtime = null;
         }
     }
