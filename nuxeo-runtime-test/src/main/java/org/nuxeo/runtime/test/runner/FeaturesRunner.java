@@ -115,8 +115,8 @@ public class FeaturesRunner extends BlockJUnit4ClassRunner {
     protected class BindMethodRules implements MethodRule {
         private final List<MethodRule> rules = new ArrayList<>();
 
-        protected BindMethodRules(List<MethodRule> actual) {
-            rules.addAll(rules);
+        protected BindMethodRules(List<MethodRule> someRules) {
+            rules.addAll(someRules);
         }
 
         @Override
